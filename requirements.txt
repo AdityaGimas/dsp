@@ -1,9 +1,12 @@
 streamlit
 yfinance
 pandas
-numpy
 plotly
 xgboost
 scikit-learn
 google-generativeai
 python-dotenv
+transformers
+torch
+ddgs
+trafilatura

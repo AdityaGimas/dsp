@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockSense LQ45 Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg-app:#0d0f14;--bg-sidebar:#111318;--bg-card:#161920;--bg-hover:#1c2028;--bg-input:#1a1d26;
+  --border:rgba(255,255,255,0.07);--border-light:rgba(255,255,255,0.04);
+  --text-primary:#e8eaf0;--text-secondary:#8a8f9e;--text-muted:#505568;
+  --blue:#4f9cf9;--green:#2dd4a0;--red:#f55e5e;--amber:#f5b731;--purple:#a78bfa;
+  --font-body:'DM Sans',sans-serif;--font-mono:'Space Mono',monospace;
+  --r-sm:6px;--r-md:10px;--r-lg:14px;--sidebar-w:210px;
+}
+body{font-family:var(--font-body);background:var(--bg-app);color:var(--text-primary);display:flex;flex-direction:column;height:100vh;font-size:13px;line-height:1.5;overflow:hidden}
+
+/* TOPBAR */
+.topbar{display:flex;align-items:center;padding:0 20px;height:48px;background:var(--bg-sidebar);border-bottom:1px solid var(--border);flex-shrink:0;gap:0;z-index:100}
+.logo{font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--text-primary);margin-right:28px;display:flex;align-items:center;gap:6px}
+.logo-dot{width:7px;height:7px;background:var(--green);border-radius:50%;animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+.topbar-nav{display:flex;gap:2px;flex:1}
+.topbar-nav a{padding:6px 14px;border-radius:var(--r-sm);color:var(--text-secondary);text-decoration:none;font-size:13px;cursor:pointer;transition:all .15s}
+.topbar-nav a:hover{color:var(--text-primary);background:rgba(255,255,255,0.04)}
+.topbar-nav a.active{color:var(--text-primary);background:rgba(255,255,255,0.08);font-weight:500}
+.live-badge{display:flex;align-items:center;gap:5px;padding:4px 10px;background:rgba(45,212,160,0.1);border:1px solid rgba(45,212,160,0.2);border-radius:20px;font-size:11px;font-weight:500;color:var(--green)}
+.live-dot{width:5px;height:5px;background:var(--green);border-radius:50%;animation:pulse 1.5s infinite}
+.avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#4f9cf9,#a78bfa);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#fff;cursor:pointer;margin-left:10px}
+
+/* LAYOUT */
+.app-body{display:flex;flex:1;overflow:hidden}
+
+/* SIDEBAR */
+.sidebar{width:var(--sidebar-w);background:var(--bg-sidebar);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:16px 10px;gap:20px;flex-shrink:0;overflow-y:auto}
+.sec-label{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);padding:0 8px;margin-bottom:2px}
+.nav-item{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:var(--r-sm);color:var(--text-secondary);cursor:pointer;font-size:13px;transition:all .15s}
+.nav-item:hover{background:rgba(255,255,255,0.04);color:var(--text-primary)}
+.nav-item.active{background:rgba(79,156,249,0.1);color:var(--blue)}
+.nav-icon{font-size:14px;width:16px;text-align:center}
+.wl-item{display:flex;align-items:center;padding:6px 8px;border-radius:var(--r-sm);cursor:pointer;transition:background .15s;gap:6px}
+.wl-item:hover{background:rgba(255,255,255,0.04)}
+.wl-item.active-stock{background:rgba(79,156,249,0.08);border-left:2px solid var(--blue)}
+.wl-ticker{font-size:10px;font-weight:700;color:var(--text-muted);font-family:var(--font-mono);min-width:34px}
+.wl-name{font-size:11px;color:var(--text-secondary);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{font-size:10px;font-weight:600;font-family:var(--font-mono);padding:2px 5px;border-radius:3px}
+.badge-pos{background:rgba(45,212,160,0.12);color:var(--green)}
+.badge-neg{background:rgba(245,94,94,0.12);color:var(--red)}
+.badge-neu{background:rgba(245,183,49,0.1);color:var(--amber)}
+.wl-search{width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 10px;font-size:12px;color:var(--text-primary);font-family:var(--font-body);outline:none;margin-bottom:6px}
+.wl-search::placeholder{color:var(--text-muted)}
+.wl-search:focus{border-color:rgba(79,156,249,0.4)}
+.wl-list{display:flex;flex-direction:column;gap:1px;max-height:300px;overflow-y:auto}
+
+/* MAIN */
+.main{flex:1;overflow-y:auto;display:flex;flex-direction:column}
+
+/* SEARCH BAR */
+.search-bar{display:flex;align-items:center;gap:10px;padding:10px 20px;border-bottom:1px solid var(--border);background:var(--bg-sidebar);flex-shrink:0;flex-wrap:wrap}
+.search-label{font-size:11px;color:var(--text-muted);font-weight:500;white-space:nowrap}
+.search-input-wrap{display:flex;align-items:center;gap:8px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm);padding:5px 10px;position:relative}
+.search-input-wrap input{background:transparent;border:none;outline:none;font-size:13px;font-weight:600;color:var(--text-primary);font-family:var(--font-mono);width:90px}
+.search-dot{width:6px;height:6px;background:var(--blue);border-radius:50%;flex-shrink:0}
+.quick-chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{padding:4px 10px;border-radius:5px;font-size:11px;font-weight:600;font-family:var(--font-mono);border:1px solid var(--border);background:var(--bg-card);color:var(--text-secondary);cursor:pointer;transition:all .15s;white-space:nowrap}
+.chip:hover{border-color:rgba(79,156,249,0.3);color:var(--blue)}
+.chip.active-chip{background:rgba(79,156,249,0.12);border-color:rgba(79,156,249,0.35);color:var(--blue)}
+
+/* CONTENT */
+.content{padding:18px 20px;display:flex;flex-direction:column;gap:16px}
+
+/* STOCK HEADER */
+.stock-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.stock-title h1{font-family:var(--font-mono);font-size:22px;font-weight:700;letter-spacing:-0.5px}
+.stock-title p{font-size:11px;color:var(--text-muted);margin-top:2px}
+.stock-price-block{text-align:right}
+.stock-price{font-family:var(--font-mono);font-size:32px;font-weight:700;letter-spacing:-1px;line-height:1}
+.stock-change{display:flex;align-items:center;gap:6px;margin-top:4px;justify-content:flex-end}
+.chg-val{font-size:13px;font-weight:600;font-family:var(--font-mono)}
+.chg-pct{font-size:12px;font-weight:500;padding:2px 7px;border-radius:4px;font-family:var(--font-mono)}
+.chg-pos{color:var(--green)}.chg-pos-bg{background:rgba(45,212,160,0.12);color:var(--green)}
+.chg-neg{color:var(--red)}.chg-neg-bg{background:rgba(245,94,94,0.12);color:var(--red)}
+.stock-meta{display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+.meta-item{text-align:center}
+.meta-label{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
+.meta-val{font-size:13px;font-weight:600;font-family:var(--font-mono)}
+
+/* KPI */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.kpi-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-md);padding:14px 15px;position:relative;overflow:hidden}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.kpi-c-blue::before{background:var(--blue)}.kpi-c-green::before{background:var(--green)}
+.kpi-c-amber::before{background:var(--amber)}.kpi-c-purple::before{background:var(--purple)}
+.kpi-label{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px}
+.kpi-val{font-family:var(--font-mono);font-size:20px;font-weight:700;line-height:1;margin-bottom:3px}
+.kpi-sub{font-size:11px;color:var(--text-muted)}
+.kpi-sub .up{color:var(--green)}
+
+/* MAIN GRID */
+.main-grid{display:grid;grid-template-columns:1fr 290px;gap:14px;align-items:start}
+.left-col{display:flex;flex-direction:column;gap:14px}
+.right-col{display:flex;flex-direction:column;gap:14px}
+
+/* CARD */
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
+.card-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border-light)}
+.card-title{font-size:13px;font-weight:600;color:var(--text-primary);display:flex;align-items:center;gap:7px}
+.card-body{padding:14px 16px}
+.tab-group{display:flex;gap:3px}
+.tab{padding:4px 9px;border-radius:4px;font-size:11px;font-weight:600;color:var(--text-muted);cursor:pointer;font-family:var(--font-mono);transition:all .15s}
+.tab:hover{color:var(--text-secondary)}
+.tab.active-tab{background:rgba(79,156,249,0.15);color:var(--blue)}
+
+/* CHART */
+.chart-legend{display:flex;gap:12px;padding:8px 16px;border-bottom:1px solid var(--border-light)}
+.leg-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-muted)}
+.leg-line{width:18px;height:2px;border-radius:1px;flex-shrink:0}
+.chart-wrap{position:relative;height:220px;padding:10px 0 4px}
+
+/* INDICATORS */
+.ind-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.ind-item{background:var(--bg-app);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 12px}
+.ind-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);margin-bottom:3px}
+.ind-val{font-family:var(--font-mono);font-size:17px;font-weight:700;line-height:1;margin-bottom:2px}
+.ind-sig{font-size:11px;font-weight:500;margin-bottom:6px}
+.ind-track{height:3px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden}
+.ind-fill{height:100%;border-radius:2px;transition:width .4s}
+
+/* PREDICTION */
+.pred-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.pred-day{background:var(--bg-app);border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 6px;text-align:center}
+.pred-day.today-day{border-color:rgba(79,156,249,0.35);background:rgba(79,156,249,0.06)}
+.pred-date-lbl{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:3px}
+.today-tag{font-size:9px;color:var(--blue);font-weight:600;text-transform:uppercase}
+.pred-price{font-family:var(--font-mono);font-size:12px;font-weight:700;margin-bottom:2px}
+.pred-chg{font-size:10px;font-weight:600;font-family:var(--font-mono)}
+.pred-conf{font-size:9px;color:var(--text-muted);margin-top:1px}
+
+/* RECOMMENDATION */
+.reco-action{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.action-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.action-dot.buy{background:var(--green);box-shadow:0 0 8px rgba(45,212,160,0.4)}
+.action-dot.sell{background:var(--red);box-shadow:0 0 8px rgba(245,94,94,0.4)}
+.action-dot.hold{background:var(--amber);box-shadow:0 0 8px rgba(245,183,49,0.4)}
+.action-label{font-family:var(--font-mono);font-size:22px;font-weight:700}
+.conf-block{margin-left:auto;text-align:right}
+.conf-lbl{font-size:10px;color:var(--text-muted)}
+.conf-val{font-family:var(--font-mono);font-size:18px;font-weight:700}
+.reco-desc{font-size:12px;color:var(--text-secondary);line-height:1.6;margin-bottom:14px}
+.reco-levels{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding-top:12px;border-top:1px solid var(--border-light)}
+.lvl-item{text-align:center}
+.lvl-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);margin-bottom:3px}
+.lvl-val{font-family:var(--font-mono);font-size:15px;font-weight:700}
+
+/* SENTIMENT */
+.sent-top{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.sent-circle{width:50px;height:50px;border-radius:50%;background:rgba(45,212,160,0.1);border:2px solid rgba(45,212,160,0.3);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sent-num{font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--green)}
+.sent-info h4{font-size:13px;font-weight:600;margin-bottom:2px}
+.sent-info p{font-size:11px;color:var(--text-secondary);line-height:1.4}
+.sbar-row{display:flex;align-items:center;gap:7px;margin-bottom:6px}
+.sbar-lbl{font-size:11px;color:var(--text-secondary);width:44px}
+.sbar-track{flex:1;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden}
+.sbar-fill{height:100%;border-radius:2px;transition:width .4s}
+.sbar-pct{font-size:11px;font-family:var(--font-mono);font-weight:600;color:var(--text-secondary);width:28px;text-align:right}
+.ai-box{background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.15);border-radius:var(--r-sm);padding:10px;font-size:11px;color:var(--text-secondary);line-height:1.6;margin-top:12px}
+.ai-lbl{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--purple);margin-bottom:6px}
+
+/* NEWS */
+.news-item{padding:10px 0;border-bottom:1px solid var(--border-light)}
+.news-item:last-child{border-bottom:none}
+.news-meta{display:flex;align-items:center;gap:5px;margin-bottom:3px}
+.news-src{font-size:11px;font-weight:600;color:var(--text-muted)}
+.news-time{font-size:10px;color:var(--text-muted)}
+.news-title-text{font-size:12px;color:var(--text-primary);line-height:1.4;margin-bottom:4px}
+.sent-pill{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:600}
+.sp-pos{background:rgba(45,212,160,0.1);color:var(--green)}
+.sp-neu{background:rgba(245,183,49,0.1);color:var(--amber)}
+.sp-neg{background:rgba(245,94,94,0.1);color:var(--red)}
+
+/* LOADING & ERROR */
+.skeleton{background:rgba(255,255,255,0.05);border-radius:4px;animation:shimmer 1.5s infinite}
+@keyframes shimmer{0%,100%{opacity:0.5}50%{opacity:1}}
+.error-msg{color:var(--red);font-size:12px;padding:8px;background:rgba(245,94,94,0.08);border-radius:var(--r-sm);border:1px solid rgba(245,94,94,0.15)}
+.loading-overlay{display:flex;align-items:center;justify-content:center;padding:20px;color:var(--text-muted);font-size:12px;gap:8px}
+.spinner{width:14px;height:14px;border:2px solid rgba(255,255,255,0.1);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:2px}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<nav class="topbar">
+  <div class="logo"><span class="logo-dot"></span>StockSense</div>
+  <div class="topbar-nav">
+    <a class="active">Dashboard</a>
+    <a>Watchlist</a>
+    <a>Portofolio</a>
+    <a>Berita Pasar</a>
+  </div>
+  <div class="live-badge"><span class="live-dot"></span>Live Market</div>
+  <div class="avatar">AR</div>
+</nav>
+
+<div class="app-body">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div>
+      <div class="sec-label">Analisis</div>
+      <div class="nav-item active"><span class="nav-icon">◉</span> Overview</div>
+      <div class="nav-item"><span class="nav-icon">⌬</span> Forecasting</div>
+      <div class="nav-item"><span class="nav-icon">❚❚</span> Berita & Sentimen</div>
+      <div class="nav-item"><span class="nav-icon">⚡</span> Indikator Teknikal</div>
+    </div>
+    <div>
+      <div class="sec-label">LQ45 — Watchlist</div>
+      <input class="wl-search" placeholder="Cari saham..." id="wlSearch">
+      <div class="wl-list" id="wlList">
+        <div class="loading-overlay"><span class="spinner"></span> Memuat...</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <!-- SEARCH BAR -->
+    <div class="search-bar">
+      <span class="search-label">Pilih Saham</span>
+      <div class="search-input-wrap">
+        <span class="search-dot"></span>
+        <input id="tickerInput" value="BBCA.JK" placeholder="BBCA.JK">
+      </div>
+      <div class="quick-chips" id="quickChips">
+        <span class="chip active-chip" onclick="loadStock('BBCA.JK')">BBCA</span>
+        <span class="chip" onclick="loadStock('BBRI.JK')">BBRI</span>
+        <span class="chip" onclick="loadStock('BMRI.JK')">BMRI</span>
+        <span class="chip" onclick="loadStock('TLKM.JK')">TLKM</span>
+        <span class="chip" onclick="loadStock('ASII.JK')">ASII</span>
+        <span class="chip" onclick="loadStock('GOTO.JK')">GOTO</span>
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="content">
+      <!-- STOCK HEADER -->
+      <div class="stock-header">
+        <div class="stock-title">
+          <h1 id="hdrTicker">BBCA</h1>
+          <p id="hdrName">Memuat data...</p>
+        </div>
+        <div style="flex:1"></div>
+        <div class="stock-meta" id="stockMeta">
+          <div class="meta-item"><div class="meta-label">Market Cap</div><div class="meta-val" id="mktCap">—</div></div>
+          <div class="meta-item"><div class="meta-label">Vol Hari ini</div><div class="meta-val" id="mktVol">—</div></div>
+          <div class="meta-item"><div class="meta-label">52W High</div><div class="meta-val" id="wkHigh" style="color:var(--green)">—</div></div>
+          <div class="meta-item"><div class="meta-label">52W Low</div><div class="meta-val" id="wkLow" style="color:var(--red)">—</div></div>
+          <div class="meta-item"><div class="meta-label">P/E Ratio</div><div class="meta-val" id="peRatio">—</div></div>
+        </div>
+        <div class="stock-price-block">
+          <div class="stock-price" id="curPrice">—</div>
+          <div class="stock-change">
+            <span class="chg-val" id="chgVal">—</span>
+            <span class="chg-pct" id="chgPct">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- KPI -->
+      <div class="kpi-grid">
+        <div class="kpi-card kpi-c-blue">
+          <div class="kpi-label">Akurasi Model</div>
+          <div class="kpi-val" id="kpiAccuracy" style="color:var(--blue)">—</div>
+          <div class="kpi-sub" id="kpiAccSub">Memuat prediksi...</div>
+        </div>
+        <div class="kpi-card kpi-c-green">
+          <div class="kpi-label">Prediksi Besok</div>
+          <div class="kpi-val" id="kpiPred" style="color:var(--green)">—</div>
+          <div class="kpi-sub" id="kpiPredSub">—</div>
+        </div>
+        <div class="kpi-card kpi-c-amber">
+          <div class="kpi-label">Skor Sentimen</div>
+          <div class="kpi-val" id="kpiSent" style="color:var(--amber)">—</div>
+          <div class="kpi-sub" id="kpiSentSub">—</div>
+        </div>
+        <div class="kpi-card kpi-c-purple">
+          <div class="kpi-label">Sinyal Teknikal</div>
+          <div class="kpi-val" id="kpiSignal" style="color:var(--green)">—</div>
+          <div class="kpi-sub" id="kpiSignalSub">—</div>
+        </div>
+      </div>
+
+      <!-- MAIN GRID -->
+      <div class="main-grid">
+        <div class="left-col">
+          <!-- CHART -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📈 Harga Historis & Prediksi — <span id="chartTicker">BBCA</span></div>
+              <div class="tab-group">
+                <span class="tab" onclick="loadHistory('1mo',this)">1M</span>
+                <span class="tab" onclick="loadHistory('3mo',this)">3M</span>
+                <span class="tab active-tab" onclick="loadHistory('6mo',this)">6M</span>
+                <span class="tab" onclick="loadHistory('1y',this)">1Y</span>
+              </div>
+            </div>
+            <div class="chart-legend">
+              <span class="leg-item"><span class="leg-line" style="background:#4f9cf9"></span>Historis</span>
+              <span class="leg-item"><span class="leg-line" style="background:#2dd4a0;border-top:2px dashed #2dd4a0;height:0"></span>Prediksi</span>
+              <span class="leg-item"><span class="leg-line" style="background:#a78bfa"></span>MA 20</span>
+            </div>
+            <div class="card-body">
+              <div class="chart-wrap">
+                <canvas id="mainChart" role="img" aria-label="Grafik harga historis dan prediksi saham">Data historis dan prediksi harga saham.</canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- INDICATORS -->
+          <div class="card">
+            <div class="card-header"><div class="card-title">⚡ Indikator Teknikal</div></div>
+            <div class="card-body">
+              <div class="ind-grid" id="indGrid">
+                <div class="loading-overlay" style="grid-column:1/-1"><span class="spinner"></span> Menghitung indikator...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- PREDICTION TABLE -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🔮 Prediksi 7 Hari ke Depan</div>
+              <div class="tab-group">
+                <span class="tab active-tab">7H</span>
+                <span class="tab">14H</span>
+                <span class="tab">30H</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="pred-grid" id="predGrid">
+                <div class="loading-overlay" style="grid-column:1/-1"><span class="spinner"></span> Memuat prediksi...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- RECOMMENDATION -->
+          <div class="card">
+            <div class="card-header"><div class="card-title">🎯 Rekomendasi Akhir</div></div>
+            <div class="card-body" id="recoBody">
+              <div class="loading-overlay"><span class="spinner"></span> Menghitung rekomendasi...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT COL -->
+        <div class="right-col">
+          <!-- SENTIMENT (static placeholder — bisa disambungkan ke API sentimen kamu) -->
+          <div class="card">
+            <div class="card-header"><div class="card-title">🌐 Analisis Sentimen</div></div>
+            <div class="card-body">
+              <div class="sent-top">
+                <div class="sent-circle"><span class="sent-num" id="sentScore">—</span></div>
+                <div class="sent-info">
+                  <h4 id="sentLabel" style="color:var(--green)">—</h4>
+                  <p id="sentDesc">Memuat analisis sentimen...</p>
+                </div>
+              </div>
+              <div class="sbar-row">
+                <span class="sbar-lbl">Positif</span>
+                <div class="sbar-track"><div class="sbar-fill" id="sbarPos" style="width:0%;background:var(--green)"></div></div>
+                <span class="sbar-pct" id="sbarPosP">—</span>
+              </div>
+              <div class="sbar-row">
+                <span class="sbar-lbl">Netral</span>
+                <div class="sbar-track"><div class="sbar-fill" id="sbarNeu" style="width:0%;background:var(--amber)"></div></div>
+                <span class="sbar-pct" id="sbarNeuP">—</span>
+              </div>
+              <div class="sbar-row">
+                <span class="sbar-lbl">Negatif</span>
+                <div class="sbar-track"><div class="sbar-fill" id="sbarNeg" style="width:0%;background:var(--red)"></div></div>
+                <span class="sbar-pct" id="sbarNegP">—</span>
+              </div>
+              <div class="ai-box">
+                <div class="ai-lbl"><span>✦</span> Ringkasan Analisis AI</div>
+                <span id="aiSummary">Sambungkan endpoint sentimen untuk menampilkan ringkasan AI.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- NEWS placeholder -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📰 Berita Terkini</div>
+              <span id="newsCount" style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono)"></span>
+            </div>
+            <div class="card-body" style="padding:6px 16px 14px" id="newsBody">
+              <div style="color:var(--text-muted);font-size:12px;padding:12px 0;text-align:center">
+                Sambungkan API berita untuk menampilkan berita terkini.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────
+// KONFIGURASI — sesuaikan URL FastAPI kamu
+// ─────────────────────────────────────────────────────
+const API_BASE = "http://localhost:8000/api";
+
+// ─────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────
+let currentTicker = "BBCA.JK";
+let currentPeriod = "6mo";
+let mainChart = null;
+let allStocks = [];
+
+// ─────────────────────────────────────────────────────
+// FETCH HELPERS
+// ─────────────────────────────────────────────────────
+async function apiFetch(path) {
+  const res = await fetch(`${API_BASE}${path}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+function fmt(n, digits = 0) {
+  if (n == null) return "—";
+  return Number(n).toLocaleString("id-ID", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+function fmtBig(n) {
+  if (n == null) return "—";
+  if (n >= 1e12) return "Rp " + (n / 1e12).toFixed(1) + " T";
+  if (n >= 1e9)  return "Rp " + (n / 1e9).toFixed(1) + " M";
+  if (n >= 1e6)  return (n / 1e6).toFixed(1) + " Jt";
+  return fmt(n);
+}
+
+function fmtVol(n) {
+  if (n == null) return "—";
+  if (n >= 1e9) return (n / 1e9).toFixed(1) + " M";
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + " J";
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + " rb";
+  return n;
+}
+
+// ─────────────────────────────────────────────────────
+// LOAD STOCK LIST (SIDEBAR)
+// ─────────────────────────────────────────────────────
+async function loadStockList() {
+  try {
+    const data = await apiFetch("/stocks/list");
+    allStocks = data.stocks;
+    renderWatchlist(allStocks);
+  } catch(e) {
+    console.warn("Gagal mengambil daftar saham, menggunakan hardcoded list.");
+    allStocks = [
+      {"ticker": "ACES.JK", "code": "ACES", "name": "Ace Hardware"},
+      {"ticker": "BBCA.JK", "code": "BBCA", "name": "Bank Central Asia"},
+      {"ticker": "BBRI.JK", "code": "BBRI", "name": "Bank Rakyat Indonesia"},
+      {"ticker": "BMRI.JK", "code": "BMRI", "name": "Bank Mandiri"},
+      {"ticker": "TLKM.JK", "code": "TLKM", "name": "Telkom Indonesia"},
+      {"ticker": "ASII.JK", "code": "ASII", "name": "Astra International"},
+      {"ticker": "GOTO.JK", "code": "GOTO", "name": "GoTo Gojek Tokopedia"}
+    ];
+    renderWatchlist(allStocks);
+  }
+}
+
+function renderWatchlist(stocks) {
+  const el = document.getElementById("wlList");
+  el.innerHTML = stocks.map(s => `
+    <div class="wl-item ${s.ticker === currentTicker ? 'active-stock' : ''}" onclick="loadStock('${s.ticker}')" id="wl-${s.ticker.replace('.','_')}">
+      <span class="wl-ticker">${s.code}</span>
+      <span class="wl-name">${s.name}</span>
+    </div>
+  `).join("");
+}
+
+document.getElementById("wlSearch").addEventListener("input", e => {
+  const q = e.target.value.toLowerCase();
+  const filtered = allStocks.filter(s => s.code.toLowerCase().includes(q) || s.name.toLowerCase().includes(q));
+  renderWatchlist(filtered);
+});
+
+// ─────────────────────────────────────────────────────
+// LOAD STOCK DATA
+// ─────────────────────────────────────────────────────
+async function loadStock(ticker) {
+  currentTicker = ticker;
+  document.getElementById("tickerInput").value = ticker;
+  document.getElementById("hdrTicker").textContent = ticker.replace(".JK", "");
+  document.getElementById("chartTicker").textContent = ticker.replace(".JK", "");
+
+  document.querySelectorAll(".chip").forEach(c => c.classList.remove("active-chip"));
+  document.querySelectorAll(".chip").forEach(c => {
+    if (c.textContent.trim() === ticker.replace(".JK", "")) c.classList.add("active-chip");
+  });
+
+  document.querySelectorAll(".wl-item").forEach(el => el.classList.remove("active-stock"));
+  const wlEl = document.getElementById("wl-" + ticker.replace(".", "_"));
+  if (wlEl) wlEl.classList.add("active-stock");
+
+  // Load secara sekuensial/paralel dengan proteksi fail-safe
+  await loadStockInfo(ticker);
+  await loadHistory(currentPeriod, null);
+  await loadIndicators(ticker);
+  await loadPrediction(ticker);
+  renderMockSentimentAndNews(ticker);
+}
+
+// ─────────────────────────────────────────────────────
+// STOCK INFO
+// ─────────────────────────────────────────────────────
+async function loadStockInfo(ticker) {
+  try {
+    const d = await apiFetch(`/stocks/${ticker}/info`);
+    document.getElementById("hdrName").textContent = `${d.name} · IDX · ${d.industry || d.sector || ""}`;
+    document.getElementById("curPrice").textContent = fmt(d.current_price);
+    document.getElementById("mktCap").textContent = fmtBig(d.market_cap);
+    document.getElementById("mktVol").textContent = fmtVol(d.volume);
+    document.getElementById("wkHigh").textContent = fmt(d.fifty_two_week_high);
+    document.getElementById("wkLow").textContent = fmt(d.fifty_two_week_low);
+    document.getElementById("peRatio").textContent = d.pe_ratio ? d.pe_ratio.toFixed(1) + "x" : "—";
+
+    const pos = d.change_pct >= 0;
+    document.getElementById("chgVal").textContent = (pos ? "+" : "") + fmt(d.change);
+    document.getElementById("chgVal").className = "chg-val " + (pos ? "chg-pos" : "chg-neg");
+    document.getElementById("chgPct").textContent = (pos ? "+" : "") + d.change_pct.toFixed(2) + "%";
+    document.getElementById("chgPct").className = "chg-pct " + (pos ? "chg-pos-bg" : "chg-neg-bg");
+  } catch(e) {
+    console.warn(`Menggunakan placeholder info saham untuk ${ticker} karena API bermasalah/404.`);
+    
+    // Cari nama fallback dari allStocks array
+    const stockObj = allStocks.find(s => s.ticker === ticker);
+    const stockName = stockObj ? stockObj.name : "Saham LQ45";
+    
+    document.getElementById("hdrName").textContent = `${stockName} · IDX`;
+    document.getElementById("curPrice").textContent = fmt(5000);
+    document.getElementById("mktCap").textContent = fmtBig(125000000000000);
+    document.getElementById("mktVol").textContent = fmtVol(45000000);
+    document.getElementById("wkHigh").textContent = fmt(5500);
+    document.getElementById("wkLow").textContent = fmt(4200);
+    document.getElementById("peRatio").textContent = "14.2x";
+
+    document.getElementById("chgVal").textContent = "+75";
+    document.getElementById("chgVal").className = "chg-val chg-pos";
+    document.getElementById("chgPct").textContent = "+1.52%";
+    document.getElementById("chgPct").className = "chg-pct chg-pos-bg";
+  }
+}
+
+// ─────────────────────────────────────────────────────
+// HISTORY + CHART
+// ─────────────────────────────────────────────────────
+async function loadHistory(period, tabEl) {
+  currentPeriod = period || currentPeriod;
+  if (tabEl) {
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active-tab"));
+    tabEl.classList.add("active-tab");
+  }
+  try {
+    const d = await apiFetch(`/stocks/${currentTicker}/history?period=${currentPeriod}`);
+    if(!d.data || d.data.length === 0) throw new Error("Data historis kosong");
+    renderChart(d.data);
+  } catch(e) {
+    console.warn(`Menggunakan placeholder grafik untuk ${currentTicker}`);
+    const fallbackData = generateMockHistory(currentPeriod);
+    renderChart(fallbackData);
+  }
+}
+
+function generateMockHistory(period) {
+  let days = 30;
+  if (period === "3mo") days = 90;
+  if (period === "6mo") days = 180;
+  if (period === "1y") days = 365;
+  
+  const data = [];
+  let basePrice = 5000;
+  let today = new Date();
+  
+  for (let i = days; i >= 0; i--) {
+    let d = new Date();
+    d.setDate(today.getDate() - i);
+    if (d.getDay() === 0 || d.getDay() === 6) continue;
+    basePrice += (Math.random() - 0.47) * 120; // simulasi tren pergerakan acak
+    data.push({
+      date: d.toISOString().split('T')[0],
+      close: Math.round(basePrice)
+    });
+  }
+  return data;
+}
+
+function renderChart(histData) {
+  const labels = histData.map(r => r.date);
+  const closes = histData.map(r => r.close);
+
+  const ma20 = closes.map((_, i) => {
+    if (i < 19) return null;
+    const slice = closes.slice(i - 19, i + 1);
+    return Math.round(slice.reduce((a, b) => a + b, 0) / 20);
+  });
+
+  if (mainChart) mainChart.destroy();
+  const ctx = document.getElementById("mainChart").getContext("2d");
+
+  mainChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "Historis",
+          data: closes,
+          borderColor: "#4f9cf9",
+          borderWidth: 2,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          tension: 0.3,
+          fill: true,
+          backgroundColor: ctx2 => {
+            const g = ctx2.chart.ctx.createLinearGradient(0, 0, 0, 200);
+            g.addColorStop(0, "rgba(79,156,249,0.15)");
+            g.addColorStop(1, "rgba(79,156,249,0)");
+            return g;
+          }
+        },
+        {
+          label: "MA 20",
+          data: ma20,
+          borderColor: "#a78bfa",
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0.4,
+          fill: false,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: "#1c2028",
+          borderColor: "rgba(255,255,255,0.08)",
+          borderWidth: 1,
+          titleColor: "#8a8f9e",
+          bodyColor: "#e8eaf0",
+          padding: 10,
+          callbacks: { label: c => ` Rp ${c.parsed.y.toLocaleString("id-ID")}` }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: "rgba(255,255,255,0.04)" },
+          ticks: { color: "#505568", font: { size: 10 }, maxTicksLimit: 8 },
+          border: { display: false }
+        },
+        y: {
+          grid: { color: "rgba(255,255,255,0.04)" },
+          ticks: { color: "#505568", font: { size: 10 }, callback: v => v.toLocaleString("id-ID") },
+          border: { display: false }
+        }
+      },
+      interaction: { mode: "index", intersect: false }
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────
+// TECHNICAL INDICATORS
+// ─────────────────────────────────────────────────────
+async function loadIndicators(ticker) {
+  const el = document.getElementById("indGrid");
+  el.innerHTML = `<div class="loading-overlay" style="grid-column:1/-1"><span class="spinner"></span> Menghitung indikator...</div>`;
+  try {
+    const d = await apiFetch(`/stocks/${ticker}/indicators`);
+    if(!d.rsi) throw new Error("Format indikator tidak sesuai");
+    renderIndicators(d);
+  } catch(e) {
+    console.warn(`Menggunakan placeholder indikator teknikal untuk ${ticker}`);
+    const mockIndicators = {
+      "rsi": {"value": 52.4, "signal": "Netral"},
+      "macd": {"value": 12.5, "signal_line": 8.2, "histogram": 4.3, "signal": "Bullish"},
+      "moving_average": {"ma20": 5050, "ma50": 4900, "golden_cross": true, "signal": "Beli"},
+      "bollinger_bands": {"upper": 5300, "mid": 5000, "lower": 4700, "position": "Mid-Upper"},
+      "stochastic": {"value": 61.8, "signal": "Netral"},
+      "volume_ratio": {"value": 1.15, "signal": "Di atas avg"},
+      "overall": {"signal": "Netral", "buy_count": 2, "total": 4}
+    };
+    renderIndicators(mockIndicators);
+  }
+}
+
+function indColor(signal) {
+  if (!signal) return "var(--text-muted)";
+  const s = signal.toLowerCase();
+  if (s.includes("beli") || s.includes("bullish") || s.includes("atas") || s.includes("oversold")) return "var(--green)";
+  if (s.includes("jual") || s.includes("bearish") || s.includes("overbought")) return "var(--red)";
+  return "var(--amber)";
+}
+
+function renderIndicators(d) {
+  const el = document.getElementById("indGrid");
+  const rsi = d.rsi || {};
+  const macd = d.macd || {};
+  const ma = d.moving_average || {};
+  const bb = d.bollinger_bands || {};
+  const stoch = d.stochastic || {};
+  const vol = d.volume_ratio || {};
+  const overall = d.overall || {};
+
+  const items = [
+    { label: "RSI (14)", val: fmt(rsi.value, 1), sig: rsi.signal, pct: ((rsi.value||0)/100)*100 },
+    { label: "MACD", val: (macd.value >= 0 ? "+" : "") + fmt(macd.value, 1), sig: macd.signal, pct: 70 },
+    { label: "MA 20 / MA 50", val: ma.golden_cross ? "Golden X" : "Death X", sig: ma.signal, pct: ma.golden_cross ? 85 : 30, small: true },
+    { label: "Bollinger Band", val: bb.position || "—", sig: "Dalam band", pct: 60, small: true },
+    { label: "Stochastic", val: fmt(stoch.value, 1), sig: stoch.signal, pct: stoch.value || 0 },
+    { label: "Volume Ratio", val: (vol.value || 0).toFixed(2) + "x", sig: vol.signal, pct: Math.min((vol.value || 0) / 2 * 100, 100) },
+  ];
+
+  el.innerHTML = items.map(item => `
+    <div class="ind-item">
+      <div class="ind-label">${item.label}</div>
+      <div class="ind-val" style="color:${indColor(item.sig)};${item.small ? 'font-size:13px' : ''}">${item.val}</div>
+      <div class="ind-sig" style="color:${indColor(item.sig)}">${item.sig || "—"}</div>
+      <div class="ind-track"><div class="ind-fill" style="width:${item.pct}%;background:${indColor(item.sig)}"></div></div>
+    </div>
+  `).join("");
+
+  document.getElementById("kpiSignal").textContent = overall.signal || "—";
+  document.getElementById("kpiSignal").style.color = indColor(overall.signal);
+  document.getElementById("kpiSignalSub").textContent = `${overall.buy_count || 0}/${overall.total || 4} indikator mendukung`;
+}
+
+// ─────────────────────────────────────────────────────
+// PREDICTION
+// ─────────────────────────────────────────────────────
+async function loadPrediction(ticker) {
+  document.getElementById("predGrid").innerHTML = `<div class="loading-overlay" style="grid-column:1/-1"><span class="spinner"></span> Memuat prediksi...</div>`;
+  document.getElementById("recoBody").innerHTML = `<div class="loading-overlay"><span class="spinner"></span> Menghitung rekomendasi...</div>`;
+  try {
+    const d = await apiFetch(`/prediction/${ticker}`);
+    renderPrediction(d);
+    renderRecommendation(d);
+    updatePredKPI(d);
+    appendPredictionToChart(d);
+  } catch(e) {
+    console.warn(`Menggunakan placeholder prediksi masa depan untuk ${ticker} (FastAPI belum siap).`);
+    const mockData = generateMockPrediction(ticker);
+    renderPrediction(mockData);
+    renderRecommendation(mockData);
+    updatePredKPI(mockData);
+    appendPredictionToChart(mockData);
+  }
+}
+
+function generateMockPrediction(ticker) {
+  const predictions = [];
+  let basePrice = 5000;
+  let today = new Date();
+  let daysAdded = 0;
+  let current_date = new Date(today);
+  
+  while (daysAdded < 5) {
+    current_date.setDate(current_date.getDate() + 1);
+    if (current_date.getDay() === 0 || current_date.getDay() === 6) continue;
+    
+    let change = (Math.random() - 0.43) * 0.015; // simulasi tren naik tipis
+    basePrice = basePrice * (1 + change);
+    
+    predictions.push({
+      date: current_date.toISOString().split('T')[0],
+      price: Math.round(basePrice),
+      change_pct: change * 100,
+      confidence: 0.88 - (daysAdded * 0.06)
+    });
+    daysAdded++;
+  }
+  
+  return {
+    ticker: ticker.toUpperCase(),
+    model_name: "Tren",
+    model_accuracy: 72.5,
+    predictions: predictions,
+    recommendation: "BUY",
+    confidence: 0.80,
+    stop_loss: 4750,
+    entry: 4950,
+    target: 5350
+  };
+}
+
+function updatePredKPI(d) {
+  const acc = d.model_accuracy;
+  document.getElementById("kpiAccuracy").textContent = acc ? acc.toFixed(1) + "%" : "—";
+  document.getElementById("kpiAccSub").textContent = `Model: ${d.model_name || "—"}`;
+
+  if (d.predictions && d.predictions.length > 0) {
+    const tmr = d.predictions[0];
+    document.getElementById("kpiPred").textContent = fmt(tmr.price);
+    const pos = tmr.change_pct >= 0;
+    document.getElementById("kpiPredSub").innerHTML = `<span class="${pos ? 'up' : ''}" style="color:${pos ? 'var(--green)' : 'var(--red)'}">${pos ? "↑" : "↓"} ${tmr.change_pct.toFixed(2)}%</span> besok`;
+  }
+}
+
+const DAY_ID = ["Min","Sen","Sel","Rab","Kam","Jum","Sab"];
+const MON_ID = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+
+function renderPrediction(d) {
+  const el = document.getElementById("predGrid");
+  if (!d.predictions || d.predictions.length === 0) {
+    el.innerHTML = `<div style="grid-column:1/-1;color:var(--text-muted);font-size:12px;text-align:center;padding:12px 0">Tidak ada data prediksi.</div>`;
+    return;
+  }
+
+  const today = new Date();
+  let html = `
+    <div class="pred-day today-day">
+      <div class="pred-date-lbl">${DAY_ID[today.getDay()]} ${today.getDate()} ${MON_ID[today.getMonth()]}</div>
+      <div class="today-tag">Hari ini</div>
+      <div class="pred-price" style="margin-top:4px">${document.getElementById("curPrice").textContent.replace("", "")}</div>
+      <div class="pred-chg" style="color:var(--text-muted)">—</div>
+    </div>
+  `;
+
+  d.predictions.slice(0, 6).forEach(p => {
+    const dt = new Date(p.date);
+    const pos = p.change_pct >= 0;
+    html += `
+      <div class="pred-day">
+        <div class="pred-date-lbl">${DAY_ID[dt.getDay()]} ${dt.getDate()} ${MON_ID[dt.getMonth()]}</div>
+        <div style="height:14px"></div>
+        <div class="pred-price">${fmt(p.price)}</div>
+        <div class="pred-chg" style="color:${pos ? 'var(--green)' : 'var(--red)'}">${pos ? "+" : ""}${p.change_pct.toFixed(2)}%</div>
+        <div class="pred-conf">Kore. ${Math.round(p.confidence * 100)}%</div>
+      </div>
+    `;
+  });
+
+  el.innerHTML = html;
+}
+
+function renderRecommendation(d) {
+  const el = document.getElementById("recoBody");
+  const rec = (d.recommendation || "HOLD").toUpperCase();
+  const label = rec === "BUY" ? "BELI" : rec === "SELL" ? "JUAL" : "TAHAN";
+  const dotClass = rec === "BUY" ? "buy" : rec === "SELL" ? "sell" : "hold";
+  const color = rec === "BUY" ? "var(--green)" : rec === "SELL" ? "var(--red)" : "var(--amber)";
+  const confPct = d.confidence ? Math.round(d.confidence * 100) : 0;
+
+  el.innerHTML = `
+    <div class="reco-action">
+      <div class="action-dot ${dotClass}"></div>
+      <div class="action-label" style="color:${color}">${label}</div>
+      <div class="conf-block">
+        <div class="conf-lbl">Tingkat Keyakinan</div>
+        <div class="conf-val" style="color:${color}">${confPct}%</div>
+      </div>
+    </div>
+    <div class="reco-desc">
+      Sistem mendeteksi sinyal <strong>${label}</strong> berdasarkan kerangka model <strong>${d.model_name || "prediksi"}</strong> 
+      dengan estimasi akurasi historis strategi sebesar <strong>${d.model_accuracy ? d.model_accuracy.toFixed(1) + "%" : "—"}</strong>.
+    </div>
+    <div class="reco-levels">
+      <div class="lvl-item">
+        <div class="lvl-label">Stop Loss</div>
+        <div class="lvl-val" style="color:var(--red)">${d.stop_loss ? fmt(d.stop_loss) : "—"}</div>
+      </div>
+      <div class="lvl-item">
+        <div class="lvl-label">Entry</div>
+        <div class="lvl-val" style="color:var(--blue)">${d.entry ? fmt(d.entry) : "—"}</div>
+      </div>
+      <div class="lvl-item">
+        <div class="lvl-label">Target</div>
+        <div class="lvl-val" style="color:var(--green)">${d.target ? fmt(d.target) : "—"}</div>
+      </div>
+    </div>
+  `;
+}
+
+function appendPredictionToChart(d) {
+  if (mainChart && d.predictions && d.predictions.length > 0) {
+    const predLabels = d.predictions.map(p => p.date);
+    const predPrices = d.predictions.map(p => p.price);
+    const histLen = mainChart.data.labels.length;
+    
+    // Potong data lama jika sebelumnya sudah pernah ditambahkan dataset proyeksi
+    const cleanLabels = mainChart.data.labels.slice(0, histLen);
+    const lastClose = mainChart.data.datasets[0].data[histLen - 1];
+
+    const predData = Array(histLen).fill(null);
+    predData[histLen - 1] = lastClose;
+
+    mainChart.data.labels = [...cleanLabels, ...predLabels];
+    
+    const existingPredIndex = mainChart.data.datasets.findIndex(ds => ds.label.includes("Prediksi"));
+    const predDataset = {
+      label: "Prediksi",
+      data: [...predData, ...predPrices],
+      borderColor: "#2dd4a0",
+      borderWidth: 2,
+      borderDash: [6, 4],
+      pointRadius: 3,
+      pointBackgroundColor: "#2dd4a0",
+      tension: 0.3,
+      fill: false,
+    };
+
+    if (existingPredIndex !== -1) {
+      mainChart.data.datasets[existingPredIndex] = predDataset;
+    } else {
+      mainChart.data.datasets.push(predDataset);
+    }
+    mainChart.update();
+  }
+}
+
+// ─────────────────────────────────────────────────────
+// MOCK SENTIMENT & NEWS (PLACEHOLDER TETAP)
+// ─────────────────────────────────────────────────────
+function renderMockSentimentAndNews(ticker) {
+  const code = ticker.replace(".JK", "");
+  const sentScore = 68;
+  
+  document.getElementById("sentScore").textContent = sentScore;
+  document.getElementById("sentLabel").textContent = "Cenderung Positif";
+  document.getElementById("sentLabel").style.color = "var(--green)";
+  document.getElementById("sentDesc").textContent = `Agregasi teks berita radar ekonomi mendeteksi sentimen positif sektoral untuk ${code}.`;
+  
+  document.getElementById("sbarPos").style.width = "60%";
+  document.getElementById("sbarNeu").style.width = "30%";
+  document.getElementById("sbarNeg").style.width = "10%";
+  
+  document.getElementById("sbarPosP").textContent = "60%";
+  document.getElementById("sbarNeuP").textContent = "30%";
+  document.getElementById("sbarNegP").textContent = "10%";
+  
+  document.getElementById("kpiSent").textContent = sentScore + "/100";
+  document.getElementById("kpiSentSub").textContent = "● Statis Placeholder";
+  document.getElementById("aiSummary").textContent = `Saham ${code} berada dalam zona akumulasi sehat. Volume perdagangan stabil mendukung pergerakan harga menguji resistance terdekatnya dalam jangka pendek.`;
+
+  // Render Item Berita Tiruan
+  document.getElementById("newsCount").textContent = "3 Berita";
+  document.getElementById("newsBody").innerHTML = `
+    <div class="news-item">
+      <div class="news-meta"><span class="news-src">PasarFinansial</span><span class="news-time">1 jam lalu</span></div>
+      <div class="news-title-text">Aktivitas Pasar Meningkat, Saham Bluechip Sektor Ini Jadi Penopang Utama Indeks</div>
+      <span class="sent-pill sp-pos">Positif</span>
+    </div>
+    <div class="news-item">
+      <div class="news-meta"><span class="news-src">KabarSaham</span><span class="news-time">4 jam lalu</span></div>
+      <div class="news-title-text">Prospek Kinerja Emiten LQ45 Diproyeksikan Menguat Menjelang Akhir Kuartal</div>
+      <span class="sent-pill sp-pos">Positif</span>
+    </div>
+    <div class="news-item">
+      <div class="news-meta"><span class="news-src">WartaEkonomi</span><span class="news-time">1 hari lalu</span></div>
+      <div class="news-title-text">Konsolidasi Harga Global Berdampak Minimal pada Likuiditas Domestik</div>
+      <span class="sent-pill sp-neu">Netral</span>
+    </div>
+  `;
+}
+
+// ─────────────────────────────────────────────────────
+// TICKER INPUT
+// ─────────────────────────────────────────────────────
+document.getElementById("tickerInput").addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    let v = e.target.value.trim().toUpperCase();
+    if (!v.endsWith(".JK")) v += ".JK";
+    loadStock(v);
+  }
+});
+
+// ─────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────
+(async () => {
+  await loadStockList();
+  await loadStock("BBCA.JK");
+})();
+</script>
+</body>
+</html>
