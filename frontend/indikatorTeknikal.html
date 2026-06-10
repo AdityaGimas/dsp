@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Indikator Teknikal — StockSense LQ45</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+/* ── PAGE-SPECIFIC ─────────────────────────────────── */
+/* signal grid */
+.sig-hero{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px}
+.sig-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-md);padding:13px 14px;position:relative;overflow:hidden;cursor:pointer;transition:border-color .15s}
+.sig-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.sig-buy::before{background:var(--green)}
+.sig-sell::before{background:var(--red)}
+.sig-hold::before{background:var(--amber)}
+.sig-card:hover{border-color:rgba(255,255,255,0.14)}
+.sig-name{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px}
+.sig-val{font-family:var(--font-mono);font-size:18px;font-weight:700;line-height:1;margin-bottom:3px}
+.sig-signal{font-size:11px;font-weight:600;padding:2px 8px;border-radius:3px;display:inline-block;margin-bottom:5px}
+.sig-signal-buy{background:rgba(45,212,160,0.12);color:var(--green)}
+.sig-signal-sell{background:rgba(245,94,94,0.12);color:var(--red)}
+.sig-signal-hold{background:rgba(245,183,49,0.12);color:var(--amber)}
+.sig-desc{font-size:10px;color:var(--text-muted);line-height:1.4}
+
+/* summary bar */
+.sum-bar{display:flex;align-items:center;gap:0;height:10px;border-radius:5px;overflow:hidden;margin:8px 0}
+.sum-seg{height:100%;transition:width .4s}
+
+/* oscillator gauge */
+.osc-wrap{position:relative;margin:12px 0}
+.osc-track{height:8px;background:linear-gradient(90deg,rgba(245,94,94,0.3) 0%,rgba(245,183,49,0.3) 30%,rgba(45,212,160,0.3) 70%,rgba(245,94,94,0.3) 100%);border-radius:4px;position:relative}
+.osc-needle{position:absolute;top:-3px;width:14px;height:14px;border-radius:50%;border:2px solid var(--bg-card);transform:translateX(-50%);transition:left .4s}
+.osc-labels{display:flex;justify-content:space-between;font-size:9px;color:var(--text-muted);margin-top:4px}
+
+/* indicator detail card */
+.ind-detail{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.ind-d-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-md)}
+.ind-d-header{padding:10px 14px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between}
+.ind-d-title{font-size:12px;font-weight:600;color:var(--text-primary)}
+.ind-d-body{padding:12px 14px}
+.ind-val-big{font-family:var(--font-mono);font-size:22px;font-weight:700;line-height:1;margin-bottom:3px}
+.ind-subtitle{font-size:11px;color:var(--text-muted);margin-bottom:10px}
+.ind-stat-row{display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px solid var(--border-light)}
+.ind-stat-row:last-child{border-bottom:none}
+.ind-sk{color:var(--text-muted)}
+.ind-sv{font-family:var(--font-mono);font-weight:600;color:var(--text-secondary)}
+
+/* candlestick-like mini chart bar */
+.mini-vol-row{display:flex;align-items:flex-end;gap:2px;height:40px;margin-top:8px}
+.vol-bar{flex:1;border-radius:1px 1px 0 0;transition:height .3s}
+
+/* support/resistance */
+.sr-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light)}
+.sr-item:last-child{border-bottom:none}
+.sr-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.sr-label{font-size:11px;color:var(--text-muted);width:90px;flex-shrink:0}
+.sr-price{font-family:var(--font-mono);font-size:13px;font-weight:700;flex:1}
+.sr-strength{display:flex;gap:2px}
+.sr-pip{width:8px;height:8px;border-radius:1px;background:rgba(255,255,255,0.06)}
+.sr-pip.filled{background:currentColor}
+
+/* pivot table */
+.pivot-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.pivot-cell{background:var(--bg-app);border:1px solid var(--border);border-radius:4px;padding:8px 4px;text-align:center}
+.pivot-lbl{font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:3px}
+.pivot-val{font-family:var(--font-mono);font-size:11px;font-weight:700}
+
+/* volume analysis */
+.vol-stat{display:flex;align-items:center;justify-content:space-between;font-size:11px;padding:5px 0;border-bottom:1px solid var(--border-light)}
+.vol-stat:last-child{border-bottom:none}
+.vol-sk{color:var(--text-muted)}
+.vol-sv{font-family:var(--font-mono);font-weight:600}
+</style>
+</head>
+<body>
+
+<nav class="topbar">
+  <div class="logo"><span class="logo-dot"></span>StockSense</div>
+  <div class="topbar-nav">
+    <a href="home.html">Dashboard</a>
+    <a>Watchlist</a>
+    <a>Portofolio</a>
+    <a>Berita Pasar</a>
+  </div>
+  <div class="live-badge"><span class="live-dot"></span>Live Market</div>
+  <div class="grok-key-btn"><span class="grok-key-dot connected"></span><span>Groq: Terhubung</span></div>
+  <div class="avatar">AR</div>
+</nav>
+
+<div class="app-body">
+  <aside class="sidebar">
+    <div>
+      <div class="sec-label">Analisis</div>
+      <div class="nav-item" onclick="location.href='home.html'"><span class="nav-icon">◉</span> Overview</div>
+      <div class="nav-item" onclick="location.href='forecasting.html'"><span class="nav-icon">⌬</span> Forecasting</div>
+      <div class="nav-item" onclick="location.href='beritaSentimen.html'"><span class="nav-icon">❚❚</span> Berita & Sentimen</div>
+      <div class="nav-item active"><span class="nav-icon">⚡</span> Indikator Teknikal</div>
+      <div class="nav-item" onclick="location.href='makroEkonomi.html'"><span class="nav-icon">🌐</span> Makro Ekonomi</div>
+    </div>
+    <div>
+      <div class="sec-label">Timeframe</div>
+      <div class="nav-item active" style="background:rgba(79,156,249,0.08);color:var(--blue)"><span class="nav-icon">◻</span> Harian</div>
+      <div class="nav-item"><span class="nav-icon">◻</span> Mingguan</div>
+      <div class="nav-item"><span class="nav-icon">◻</span> Bulanan</div>
+    </div>
+    <div>
+      <div class="sec-label">Preset Indikator</div>
+      <div class="nav-item"><span class="nav-icon">◉</span> Trend Following</div>
+      <div class="nav-item"><span class="nav-icon">◉</span> Mean Reversion</div>
+      <div class="nav-item"><span class="nav-icon">◉</span> Momentum</div>
+      <div class="nav-item"><span class="nav-icon">◉</span> Volatilitas</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="search-bar">
+      <span class="search-label">Indikator Teknikal</span>
+      <div class="search-input-wrap">
+        <span class="search-dot"></span>
+        <input value="BBCA.JK" style="background:transparent;border:none;outline:none;font-size:13px;font-weight:600;color:var(--text-primary);font-family:var(--font-mono);width:90px">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="font-size:11px;color:var(--text-muted)">Timeframe:</span>
+        <div class="tab-group">
+          <span class="tab active-tab">1D</span>
+          <span class="tab">4H</span>
+          <span class="tab">1W</span>
+        </div>
+      </div>
+      <button class="fetch-news-btn" style="margin-left:auto;background:rgba(167,139,250,0.1);border-color:rgba(167,139,250,0.2);color:var(--purple)">
+        <span class="btn-txt">✦ Analisis Groq</span>
+      </button>
+    </div>
+
+    <div class="content">
+
+      <!-- SUMMARY + SIGNAL -->
+      <div style="display:grid;grid-template-columns:1fr 200px;gap:14px;align-items:start;margin-bottom:0">
+        <div class="card">
+          <div class="card-header"><div class="card-title">⚡ Sinyal Ringkasan Teknikal</div></div>
+          <div class="card-body">
+            <div style="display:flex;align-items:center;gap:24px">
+              <div>
+                <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">Sinyal Dominan</div>
+                <div style="font-family:var(--font-mono);font-size:28px;font-weight:700;color:var(--green)">BELI</div>
+              </div>
+              <div style="flex:1">
+                <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px">Komposisi Sinyal (14 indikator)</div>
+                <div class="sum-bar">
+                  <div class="sum-seg" style="width:57%;background:var(--green)"></div>
+                  <div class="sum-seg" style="width:22%;background:var(--amber)"></div>
+                  <div class="sum-seg" style="width:21%;background:var(--red)"></div>
+                </div>
+                <div style="display:flex;gap:12px;margin-top:4px">
+                  <span style="font-size:11px;color:var(--green)">● BELI: 8</span>
+                  <span style="font-size:11px;color:var(--amber)">● HOLD: 3</span>
+                  <span style="font-size:11px;color:var(--red)">● JUAL: 3</span>
+                </div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-size:10px;color:var(--text-muted);margin-bottom:2px">Kekuatan Sinyal</div>
+                <div style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--blue)">72%</div>
+              </div>
+            </div>
+
+            <!-- Groq Analysis Box -->
+            <div class="ai-box" style="margin-top:12px">
+              <div class="ai-lbl"><span>✦</span> Analisis Teknikal Groq</div>
+              <div>BBCA berada dalam <strong style="color:var(--green)">uptrend jangka menengah</strong> yang solid. RSI pada 58 menunjukkan momentum masih ada tanpa kondisi overbought. Golden cross MA 20/50 yang terbentuk 8 hari lalu memperkuat bias bullish. Volume pada breakout level Rp 9.400 tergolong signifikan. Target teknikal terdekat Rp 9.800 dengan stop loss di Rp 9.200.</div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">🕰️ Harga Kini</div></div>
+          <div class="card-body">
+            <div style="font-family:var(--font-mono);font-size:28px;font-weight:700;color:var(--text-primary);line-height:1">Rp 9.475</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:6px;margin-bottom:14px">
+              <span style="font-size:13px;font-weight:600;font-family:var(--font-mono);color:var(--green)">+115</span>
+              <span style="font-size:12px;font-weight:500;padding:2px 7px;border-radius:4px;font-family:var(--font-mono);background:rgba(45,212,160,0.12);color:var(--green)">+1.23%</span>
+            </div>
+            <div class="ind-stat-row"><div class="ind-sk">Open</div><div class="ind-sv">Rp 9.380</div></div>
+            <div class="ind-stat-row"><div class="ind-sk">High</div><div class="ind-sv" style="color:var(--green)">Rp 9.510</div></div>
+            <div class="ind-stat-row"><div class="ind-sk">Low</div><div class="ind-sv" style="color:var(--red)">Rp 9.340</div></div>
+            <div class="ind-stat-row"><div class="ind-sk">Volume</div><div class="ind-sv">48.7 Jt</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SIGNAL CARDS -->
+      <div class="sig-hero">
+        <div class="sig-card sig-buy">
+          <div class="sig-name">RSI (14)</div>
+          <div class="sig-val" style="color:var(--blue)">58.4</div>
+          <div class="sig-signal sig-signal-buy">BELI</div>
+          <div class="sig-desc">Momentum positif, belum overbought (&lt;70)</div>
+          <div class="osc-wrap">
+            <div class="osc-track">
+              <div class="osc-needle" style="left:58.4%;background:var(--blue)"></div>
+            </div>
+            <div class="osc-labels"><span>0</span><span>30</span><span>50</span><span>70</span><span>100</span></div>
+          </div>
+        </div>
+        <div class="sig-card sig-buy">
+          <div class="sig-name">MACD</div>
+          <div class="sig-val" style="color:var(--green)">+127</div>
+          <div class="sig-signal sig-signal-buy">BELI</div>
+          <div class="sig-desc">MACD di atas sinyal, histogram positif</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:6px">Signal: +98 · Hist: +29</div>
+        </div>
+        <div class="sig-card sig-hold">
+          <div class="sig-name">Bollinger Band</div>
+          <div class="sig-val" style="color:var(--amber)">Tengah</div>
+          <div class="sig-signal sig-signal-hold">HOLD</div>
+          <div class="sig-desc">Harga di antara upper & lower band</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:6px">Upper: 9.840 · Lower: 9.110</div>
+        </div>
+        <div class="sig-card sig-buy">
+          <div class="sig-name">MA 20 / MA 50</div>
+          <div class="sig-val" style="color:var(--green)">Golden ✓</div>
+          <div class="sig-signal sig-signal-buy">BELI</div>
+          <div class="sig-desc">MA20 memotong MA50 ke atas (Golden Cross)</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:6px">MA20: 9.380 · MA50: 9.210</div>
+        </div>
+        <div class="sig-card sig-sell">
+          <div class="sig-name">Stochastic</div>
+          <div class="sig-val" style="color:var(--red)">78.3</div>
+          <div class="sig-signal sig-signal-sell">JUAL</div>
+          <div class="sig-desc">Mendekati area overbought (&gt;80)</div>
+          <div class="osc-wrap">
+            <div class="osc-track">
+              <div class="osc-needle" style="left:78.3%;background:var(--red)"></div>
+            </div>
+            <div class="osc-labels"><span>0</span><span>20</span><span>50</span><span>80</span><span>100</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DETAIL INDICATOR CARDS -->
+      <div class="ind-detail">
+        <!-- RSI Detail -->
+        <div class="ind-d-card">
+          <div class="ind-d-header">
+            <div class="ind-d-title">📉 RSI — Relative Strength Index</div>
+            <span class="sig-signal sig-signal-buy" style="font-size:10px">BELI</span>
+          </div>
+          <div class="ind-d-body">
+            <div class="ind-val-big" style="color:var(--blue)">58.4</div>
+            <div class="ind-subtitle">Periode: 14 · Timeframe: 1D</div>
+            <div class="osc-wrap">
+              <div class="osc-track" style="height:10px">
+                <div class="osc-needle" style="left:58.4%;background:var(--blue);width:16px;height:16px;top:-3px"></div>
+              </div>
+              <div class="osc-labels"><span>OS: &lt;30</span><span>Netral</span><span>OB: &gt;70</span></div>
+            </div>
+            <div class="ind-stat-row"><div class="ind-sk">RSI 7</div><div class="ind-sv">62.1</div></div>
+            <div class="ind-stat-row"><div class="ind-sk">RSI 14</div><div class="ind-sv" style="color:var(--blue)">58.4</div></div>
+            <div class="ind-stat-row"><div class="ind-sk">RSI 21</div><div class="ind-sv">54.7</div></div>
+            <div class="ind-stat-row"><div class="ind-sk">Divergensi</div><div class="ind-sv" style="color:var(--green)">Tidak ada</div></div>
+          </div>
+        </div>
+
+        <!-- MACD Detail -->
+        <div class="ind-d-card">
+          <div class="ind-d-header">
+            <div class="ind-d-title">📊 MACD (12,26,9)</div>
+            <span class="sig-signal sig-signal-buy" style="font-size:10px">BELI</span>
+          </div>
+          <div class="ind-d-body">
+            <div class="ind-val-big" style="color:var(--green)">+127.4</div>
+            <div class="ind-subtitle">Histogram positif selama 5 hari</div>
+            <div style="height:60px;margin:8px 0"><canvas id="macdChart"></canvas></div>
+            <div class="ind-stat-row"><div class="ind-sk">MACD Line</div><div class="ind-sv" style="color:var(--green)">+127.4</div></div>
+            <div class="ind-stat-row"><div class="ind-sk">Signal Line</div><div class="ind-sv">+98.2</div></div>
+            <div class="ind-stat-row"><div class="ind-sk">Histogram</div><div class="ind-sv" style="color:var(--green)">+29.2</div></div>
+            <div class="ind-stat-row"><div class="ind-sk">Crossover</div><div class="ind-sv" style="color:var(--green)">Bullish (5h lalu)</div></div>
+          </div>
+        </div>
+
+        <!-- Bollinger Band Detail -->
+        <div class="ind-d-card">
+          <div class="ind-d-header">
+            <div class="ind-d-title">🎯 Bollinger Band (20,2)</div>
+            <span class="sig-signal sig-signal-hold" style="font-size:10px">HOLD</span>
+          </div>
+          <div class="ind-d-body">
+            <div class="ind-val-big" style="color:var(--amber)">%B: 0.47</div>
+            <div class="ind-subtitle">Harga di antara kedua band</div>
+            <div class="ind-stat-row"><div class="ind-sk">Upper Band</div><div class="ind-sv" style="color:var(--red)">Rp 9.840</div></div>
+            <div class="ind-stat-row"><div class="ind-sk">Middle (MA20)</div><div class="ind-sv">Rp 9.380</div></div>
+            <div class="ind-stat-row"><div class="ind-sk">Lower Band</div><div class="ind-sv" style="color:var(--green)">Rp 9.110</div></div>
+            <div class="ind-stat-row"><div class="ind-sk">Bandwidth</div><div class="ind-sv">7.7%</div></div>
+            <div class="ind-stat-row"><div class="ind-sk">Squeeze</div><div class="ind-sv" style="color:var(--amber)">Moderat</div></div>
+          </div>
+        </div>
+
+        <!-- Volume Detail -->
+        <div class="ind-d-card">
+          <div class="ind-d-header">
+            <div class="ind-d-title">📦 Analisis Volume</div>
+            <span class="sig-signal sig-signal-buy" style="font-size:10px">BELI</span>
+          </div>
+          <div class="ind-d-body">
+            <div class="ind-val-big" style="color:var(--green)">48.7 Jt</div>
+            <div class="ind-subtitle">Volume hari ini · +34% vs rata-rata</div>
+            <div class="mini-vol-row" id="miniVol"></div>
+            <div class="vol-stat"><div class="vol-sk">Rata-rata 20H</div><div class="vol-sv">36.3 Jt</div></div>
+            <div class="vol-stat"><div class="vol-sk">OBV</div><div class="vol-sv" style="color:var(--green)">↑ Naik</div></div>
+            <div class="vol-stat"><div class="vol-sk">Vol Rasio</div><div class="vol-sv" style="color:var(--green)">1.34×</div></div>
+            <div class="vol-stat"><div class="vol-sk">Money Flow</div><div class="vol-sv" style="color:var(--green)">Positif</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SUPPORT / RESISTANCE + PIVOT -->
+      <div style="display:grid;grid-template-columns:280px 1fr;gap:14px;align-items:start">
+        <div class="card">
+          <div class="card-header"><div class="card-title">🎯 Support & Resistance</div></div>
+          <div class="card-body">
+            <div class="sr-item">
+              <div class="sr-dot" style="background:var(--red)"></div>
+              <div class="sr-label" style="color:var(--red)">Resistance 2</div>
+              <div class="sr-price" style="color:var(--red)">Rp 10.100</div>
+              <div class="sr-strength" style="color:var(--red)">
+                <div class="sr-pip filled"></div><div class="sr-pip filled"></div><div class="sr-pip filled"></div><div class="sr-pip"></div><div class="sr-pip"></div>
+              </div>
+            </div>
+            <div class="sr-item">
+              <div class="sr-dot" style="background:var(--red)"></div>
+              <div class="sr-label" style="color:var(--red)">Resistance 1</div>
+              <div class="sr-price" style="color:var(--red)">Rp 9.800</div>
+              <div class="sr-strength" style="color:var(--red)">
+                <div class="sr-pip filled"></div><div class="sr-pip filled"></div><div class="sr-pip filled"></div><div class="sr-pip filled"></div><div class="sr-pip"></div>
+              </div>
+            </div>
+            <div class="sr-item" style="background:rgba(79,156,249,0.04);border-radius:4px;margin:4px -4px;padding:8px 4px">
+              <div class="sr-dot" style="background:var(--blue);box-shadow:0 0 6px rgba(79,156,249,0.5)"></div>
+              <div class="sr-label" style="color:var(--blue)">Harga Kini</div>
+              <div class="sr-price" style="color:var(--blue)">Rp 9.475</div>
+              <span style="font-size:10px;background:rgba(79,156,249,0.12);color:var(--blue);padding:2px 6px;border-radius:3px">Live</span>
+            </div>
+            <div class="sr-item">
+              <div class="sr-dot" style="background:var(--green)"></div>
+              <div class="sr-label" style="color:var(--green)">Support 1</div>
+              <div class="sr-price" style="color:var(--green)">Rp 9.200</div>
+              <div class="sr-strength" style="color:var(--green)">
+                <div class="sr-pip filled"></div><div class="sr-pip filled"></div><div class="sr-pip filled"></div><div class="sr-pip filled"></div><div class="sr-pip filled"></div>
+              </div>
+            </div>
+            <div class="sr-item">
+              <div class="sr-dot" style="background:var(--green)"></div>
+              <div class="sr-label" style="color:var(--green)">Support 2</div>
+              <div class="sr-price" style="color:var(--green)">Rp 8.900</div>
+              <div class="sr-strength" style="color:var(--green)">
+                <div class="sr-pip filled"></div><div class="sr-pip filled"></div><div class="sr-pip"></div><div class="sr-pip"></div><div class="sr-pip"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">📐 Pivot Points — Classic</div>
+            <div class="tab-group">
+              <span class="tab active-tab">Classic</span>
+              <span class="tab">Fibonacci</span>
+              <span class="tab">Woodie</span>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="pivot-grid">
+              <div class="pivot-cell">
+                <div class="pivot-lbl" style="color:var(--red)">R3</div>
+                <div class="pivot-val" style="color:var(--red)">10.420</div>
+              </div>
+              <div class="pivot-cell">
+                <div class="pivot-lbl" style="color:var(--red)">R2</div>
+                <div class="pivot-val" style="color:var(--red)">10.110</div>
+              </div>
+              <div class="pivot-cell">
+                <div class="pivot-lbl" style="color:var(--red)">R1</div>
+                <div class="pivot-val" style="color:var(--red)">9.790</div>
+              </div>
+              <div class="pivot-cell" style="border-color:rgba(79,156,249,0.4);background:rgba(79,156,249,0.07)">
+                <div class="pivot-lbl" style="color:var(--blue)">Pivot</div>
+                <div class="pivot-val" style="color:var(--blue)">9.475</div>
+              </div>
+              <div class="pivot-cell">
+                <div class="pivot-lbl" style="color:var(--green)">S1</div>
+                <div class="pivot-val" style="color:var(--green)">9.155</div>
+              </div>
+              <div class="pivot-cell">
+                <div class="pivot-lbl" style="color:var(--green)">S2</div>
+                <div class="pivot-val" style="color:var(--green)">8.840</div>
+              </div>
+              <div class="pivot-cell">
+                <div class="pivot-lbl" style="color:var(--green)">S3</div>
+                <div class="pivot-val" style="color:var(--green)">8.520</div>
+              </div>
+            </div>
+            <div style="margin-top:14px;padding:10px;background:rgba(79,156,249,0.05);border:1px solid rgba(79,156,249,0.15);border-radius:var(--r-sm)">
+              <div style="font-size:11px;color:var(--text-secondary);line-height:1.6">
+                Harga <strong style="color:var(--blue)">Rp 9.475</strong> berada tepat di <strong style="color:var(--blue)">Pivot Point</strong>. Breakout ke atas R1 (Rp 9.790) akan mengkonfirmasi kelanjutan uptrend. Level S1 (Rp 9.155) berfungsi sebagai zona stop loss konservatif.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script>
+// Mini MACD histogram
+const macdCtx=document.getElementById('macdChart').getContext('2d');
+const macdHist=[-40,-20,5,15,29,42,35,29];
+new Chart(macdCtx,{
+  type:'bar',
+  data:{labels:['','','','','','','',''],datasets:[{data:macdHist,backgroundColor:macdHist.map(v=>v>=0?'rgba(45,212,160,0.6)':'rgba(245,94,94,0.6)'),borderRadius:2}]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{enabled:false}},scales:{x:{display:false},y:{display:false}}}
+});
+
+// Mini volume bars
+const vols=[32,28,35,41,30,38,48];
+const maxV=Math.max(...vols);
+document.getElementById('miniVol').innerHTML=vols.map((v,i)=>`
+  <div class="vol-bar" style="height:${(v/maxV*100)}%;background:${i===vols.length-1?'var(--blue)':'rgba(79,156,249,0.3)'}"></div>
+`).join('');
+</script>
+</body>
+</html>

@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Makro Ekonomi — StockSense LQ45</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+/* ── PAGE-SPECIFIC ─────────────────────────────────── */
+/* macro kpi row */
+.macro-hero{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px}
+.mh-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-md);padding:14px 15px;position:relative;overflow:hidden}
+.mh-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.mh-up::before{background:var(--green)}
+.mh-down::before{background:var(--red)}
+.mh-neu::before{background:var(--amber)}
+.mh-blue::before{background:var(--blue)}
+.mh-purple::before{background:var(--purple)}
+.mh-label{font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px}
+.mh-val{font-family:var(--font-mono);font-size:22px;font-weight:700;line-height:1;margin-bottom:3px}
+.mh-change{font-size:11px;font-weight:600;margin-bottom:4px}
+.mh-desc{font-size:10px;color:var(--text-muted);line-height:1.4}
+
+/* correlation matrix */
+.corr-grid{display:grid;grid-template-columns:90px repeat(5,1fr);gap:2px}
+.corr-cell{padding:6px 4px;text-align:center;border-radius:3px;font-size:11px;font-family:var(--font-mono);font-weight:600}
+.corr-header{font-size:10px;font-weight:600;color:var(--text-muted);padding:6px 4px;text-align:center}
+.corr-row-label{font-size:11px;color:var(--text-secondary);padding:6px 4px;display:flex;align-items:center}
+.corr-pos-strong{background:rgba(45,212,160,0.25);color:var(--green)}
+.corr-pos-med{background:rgba(45,212,160,0.12);color:#2dd4a0aa}
+.corr-pos-weak{background:rgba(45,212,160,0.05);color:var(--text-muted)}
+.corr-neg-strong{background:rgba(245,94,94,0.25);color:var(--red)}
+.corr-neg-med{background:rgba(245,94,94,0.12);color:#f55e5eaa}
+.corr-neg-weak{background:rgba(245,94,94,0.05);color:var(--text-muted)}
+.corr-self{background:rgba(79,156,249,0.2);color:var(--blue)}
+
+/* event calendar */
+.event-item{display:flex;gap:14px;padding:10px 0;border-bottom:1px solid var(--border-light);align-items:flex-start}
+.event-item:last-child{border-bottom:none}
+.event-date-block{flex-shrink:0;width:42px;text-align:center}
+.event-day{font-family:var(--font-mono);font-size:18px;font-weight:700;line-height:1;color:var(--text-primary)}
+.event-month{font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted)}
+.event-body{flex:1;min-width:0}
+.event-name{font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:3px}
+.event-desc{font-size:11px;color:var(--text-muted);line-height:1.4}
+.event-impact{font-size:10px;font-weight:600;padding:1px 6px;border-radius:3px}
+.event-high{background:rgba(245,94,94,0.12);color:var(--red)}
+.event-med{background:rgba(245,183,49,0.12);color:var(--amber)}
+.event-low{background:rgba(79,156,249,0.1);color:var(--blue)}
+.event-prev{font-size:10px;font-family:var(--font-mono);color:var(--text-muted)}
+.event-actual{font-size:11px;font-family:var(--font-mono);font-weight:700}
+
+/* sector heatmap */
+.sector-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.sector-cell{background:var(--bg-app);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px;cursor:pointer;transition:border-color .15s}
+.sector-cell:hover{border-color:rgba(255,255,255,0.15)}
+.sector-name{font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:4px}
+.sector-chg{font-family:var(--font-mono);font-size:15px;font-weight:700;margin-bottom:4px}
+.sector-bar{height:3px;border-radius:2px;margin-top:4px}
+
+/* global index table */
+.gidx-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border-light)}
+.gidx-row:last-child{border-bottom:none}
+.gidx-flag{font-size:16px;flex-shrink:0;width:22px}
+.gidx-name{font-size:12px;font-weight:500;color:var(--text-secondary);flex:1}
+.gidx-val{font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--text-primary)}
+.gidx-chg{font-size:11px;font-family:var(--font-mono);font-weight:600;text-align:right;width:52px}
+.gidx-spark{width:60px;height:22px;flex-shrink:0}
+
+/* currency row */
+.fx-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-light)}
+.fx-row:last-child{border-bottom:none}
+.fx-pair{font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-secondary);width:70px}
+.fx-rate{font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--text-primary)}
+.fx-chg{font-size:11px;font-family:var(--font-mono);font-weight:600}
+
+/* BI rate timeline */
+.rate-timeline{display:flex;flex-direction:column;gap:0}
+.rt-item{display:flex;align-items:center;gap:10px;padding:7px 0;position:relative}
+.rt-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;z-index:1}
+.rt-line{position:absolute;left:4px;top:0;bottom:0;width:2px;background:rgba(255,255,255,0.06);z-index:0}
+.rt-date{font-size:11px;color:var(--text-muted);width:60px;flex-shrink:0}
+.rt-rate{font-family:var(--font-mono);font-size:13px;font-weight:700;flex:1}
+.rt-delta{font-size:11px;font-weight:600;font-family:var(--font-mono);width:46px;text-align:right}
+</style>
+</head>
+<body>
+
+<nav class="topbar">
+  <div class="logo"><span class="logo-dot"></span>StockSense</div>
+  <div class="topbar-nav">
+    <a href="home.html">Dashboard</a>
+    <a>Watchlist</a>
+    <a>Portofolio</a>
+    <a>Berita Pasar</a>
+  </div>
+  <div class="live-badge"><span class="live-dot"></span>Live Market</div>
+  <div class="grok-key-btn"><span class="grok-key-dot connected"></span><span>Groq: Terhubung</span></div>
+  <div class="avatar">AR</div>
+</nav>
+
+<div class="app-body">
+  <aside class="sidebar">
+    <div>
+      <div class="sec-label">Analisis</div>
+      <div class="nav-item" onclick="location.href='home.html'"><span class="nav-icon">◉</span> Overview</div>
+      <div class="nav-item" onclick="location.href='forecasting.html'"><span class="nav-icon">⌬</span> Forecasting</div>
+      <div class="nav-item" onclick="location.href='beritaSentimen.html'"><span class="nav-icon">❚❚</span> Berita & Sentimen</div>
+      <div class="nav-item" onclick="location.href='indikatorTeknikal.html'"><span class="nav-icon">⚡</span> Indikator Teknikal</div>
+      <div class="nav-item active"><span class="nav-icon">🌐</span> Makro Ekonomi</div>
+    </div>
+    <div>
+      <div class="sec-label">Event Mendatang</div>
+      <div style="display:flex;flex-direction:column;gap:2px;padding:0 4px">
+        <div style="font-size:11px;color:var(--text-secondary);padding:6px 4px;border-left:2px solid var(--red);">
+          <div style="font-size:10px;color:var(--text-muted)">12 Jun</div>
+          RDG Bank Indonesia
+        </div>
+        <div style="font-size:11px;color:var(--text-secondary);padding:6px 4px;border-left:2px solid var(--amber);">
+          <div style="font-size:10px;color:var(--text-muted)">15 Jun</div>
+          Data Inflasi Mei
+        </div>
+        <div style="font-size:11px;color:var(--text-secondary);padding:6px 4px;border-left:2px solid var(--blue);">
+          <div style="font-size:10px;color:var(--text-muted)">18 Jun</div>
+          FOMC Fed Rate
+        </div>
+        <div style="font-size:11px;color:var(--text-secondary);padding:6px 4px;border-left:2px solid var(--text-muted);">
+          <div style="font-size:10px;color:var(--text-muted)">30 Jun</div>
+          PDB Q1 Final
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="sec-label">Saham Terpilih</div>
+      <div class="wl-item active-stock"><div class="wl-ticker">BBCA</div><div class="wl-name">Bank Central Asia</div></div>
+      <div class="wl-item"><div class="wl-ticker">IDX</div><div class="wl-name">IHSG Komposit</div></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="search-bar">
+      <span class="search-label">Makro Ekonomi</span>
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-sm)">
+        <span style="width:6px;height:6px;background:var(--amber);border-radius:50%;flex-shrink:0;display:block"></span>
+        <span style="font-size:13px;font-weight:600;color:var(--text-primary);font-family:var(--font-mono)">Indonesia</span>
+      </div>
+      <span style="font-size:11px;color:var(--text-muted)">Data per 10 Juni 2025</span>
+      <button class="fetch-news-btn" style="margin-left:auto">
+        <span class="btn-txt">↻ Perbarui Data</span>
+      </button>
+      <button class="fetch-news-btn" style="background:rgba(167,139,250,0.1);border-color:rgba(167,139,250,0.2);color:var(--purple)">
+        <span class="btn-txt">✦ Analisis Groq</span>
+      </button>
+    </div>
+
+    <div class="content">
+
+      <!-- MACRO HERO -->
+      <div class="macro-hero">
+        <div class="mh-card mh-up">
+          <div class="mh-label">PDB Growth</div>
+          <div class="mh-val" style="color:var(--green)">5.11%</div>
+          <div class="mh-change chg-pos">Q1 2025 YoY</div>
+          <div class="mh-desc">Di atas ekspektasi 4,9%</div>
+        </div>
+        <div class="mh-card mh-down">
+          <div class="mh-label">Inflasi (CPI)</div>
+          <div class="mh-val" style="color:var(--amber)">2.84%</div>
+          <div class="mh-change" style="color:var(--green)">↓ dari 3.02%</div>
+          <div class="mh-desc">Data April 2025, sesuai target</div>
+        </div>
+        <div class="mh-card mh-neu">
+          <div class="mh-label">BI Rate</div>
+          <div class="mh-val" style="color:var(--text-primary)">5.75%</div>
+          <div class="mh-change" style="color:var(--amber)">→ Tidak berubah</div>
+          <div class="mh-desc">RDG Mei 2025</div>
+        </div>
+        <div class="mh-card mh-blue">
+          <div class="mh-label">USD/IDR</div>
+          <div class="mh-val" style="color:var(--blue)">15.847</div>
+          <div class="mh-change chg-pos">Rp menguat +0.4%</div>
+          <div class="mh-desc">1 USD = Rp 15.847</div>
+        </div>
+        <div class="mh-card mh-purple">
+          <div class="mh-label">IHSG</div>
+          <div class="mh-val" style="color:var(--purple)">7.284</div>
+          <div class="mh-change chg-pos">+0.87% hari ini</div>
+          <div class="mh-desc">Volume: 18.3T</div>
+        </div>
+      </div>
+
+      <!-- CHARTS ROW -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">📈 PDB & Inflasi Historis</div>
+            <div class="tab-group">
+              <span class="tab active-tab">3T</span>
+              <span class="tab">1T</span>
+              <span class="tab">5T</span>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap" style="height:180px"><canvas id="gdpChart"></canvas></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">💱 Tren USD/IDR</div>
+            <div class="tab-group">
+              <span class="tab active-tab">6B</span>
+              <span class="tab">1T</span>
+              <span class="tab">YTD</span>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap" style="height:180px"><canvas id="fxChart"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BI RATE HISTORY + CURRENCY TABLE + GLOBAL INDEX -->
+      <div style="display:grid;grid-template-columns:200px 200px 1fr;gap:14px;align-items:start">
+        <div class="card">
+          <div class="card-header"><div class="card-title">🏦 Histori BI Rate</div></div>
+          <div class="card-body" style="padding:10px 14px">
+            <div class="rate-timeline">
+              <div class="rt-item">
+                <div class="rt-dot" style="background:var(--amber)"></div>
+                <div class="rt-date">Mei '25</div>
+                <div class="rt-rate">5.75%</div>
+                <div class="rt-delta" style="color:var(--amber)">—</div>
+              </div>
+              <div class="rt-item">
+                <div class="rt-dot" style="background:var(--red)"></div>
+                <div class="rt-date">Apr '25</div>
+                <div class="rt-rate">5.75%</div>
+                <div class="rt-delta" style="color:var(--amber)">—</div>
+              </div>
+              <div class="rt-item">
+                <div class="rt-dot" style="background:var(--red)"></div>
+                <div class="rt-date">Mar '25</div>
+                <div class="rt-rate">5.75%</div>
+                <div class="rt-delta" style="color:var(--amber)">—</div>
+              </div>
+              <div class="rt-item">
+                <div class="rt-dot" style="background:var(--green)"></div>
+                <div class="rt-date">Feb '25</div>
+                <div class="rt-rate">5.75%</div>
+                <div class="rt-delta" style="color:var(--red)">▼ 25bp</div>
+              </div>
+              <div class="rt-item">
+                <div class="rt-dot" style="background:var(--amber)"></div>
+                <div class="rt-date">Jan '25</div>
+                <div class="rt-rate">6.00%</div>
+                <div class="rt-delta" style="color:var(--amber)">—</div>
+              </div>
+              <div class="rt-item">
+                <div class="rt-dot" style="background:var(--amber)"></div>
+                <div class="rt-date">Des '24</div>
+                <div class="rt-rate">6.00%</div>
+                <div class="rt-delta" style="color:var(--amber)">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><div class="card-title">💱 Kurs Utama</div></div>
+          <div class="card-body" style="padding:8px 14px">
+            <div class="fx-row">
+              <div class="fx-pair">USD/IDR</div>
+              <div class="fx-rate">15.847</div>
+              <div class="fx-chg chg-pos">+0.4%</div>
+            </div>
+            <div class="fx-row">
+              <div class="fx-pair">EUR/IDR</div>
+              <div class="fx-rate">17.342</div>
+              <div class="fx-chg chg-neg">-0.2%</div>
+            </div>
+            <div class="fx-row">
+              <div class="fx-pair">JPY/IDR</div>
+              <div class="fx-rate">103.2</div>
+              <div class="fx-chg chg-pos">+0.1%</div>
+            </div>
+            <div class="fx-row">
+              <div class="fx-pair">SGD/IDR</div>
+              <div class="fx-rate">11.782</div>
+              <div class="fx-chg chg-neg">-0.3%</div>
+            </div>
+            <div class="fx-row">
+              <div class="fx-pair">CNY/IDR</div>
+              <div class="fx-rate">2.184</div>
+              <div class="fx-chg chg-pos">+0.2%</div>
+            </div>
+            <div class="fx-row">
+              <div class="fx-pair">GBP/IDR</div>
+              <div class="fx-rate">20.195</div>
+              <div class="fx-chg chg-neg">-0.1%</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><div class="card-title">🌐 Indeks Global</div></div>
+          <div class="card-body" style="padding:6px 14px 12px">
+            <div class="gidx-row"><div class="gidx-flag">🇮🇩</div><div class="gidx-name">IHSG (IDX)</div><div class="gidx-val">7.284</div><div class="gidx-chg chg-pos">+0.87%</div></div>
+            <div class="gidx-row"><div class="gidx-flag">🇺🇸</div><div class="gidx-name">S&P 500</div><div class="gidx-val">5.341</div><div class="gidx-chg chg-pos">+0.34%</div></div>
+            <div class="gidx-row"><div class="gidx-flag">🇺🇸</div><div class="gidx-name">NASDAQ</div><div class="gidx-val">16.742</div><div class="gidx-chg chg-pos">+0.51%</div></div>
+            <div class="gidx-row"><div class="gidx-flag">🇯🇵</div><div class="gidx-name">Nikkei 225</div><div class="gidx-val">38.421</div><div class="gidx-chg chg-neg">-0.22%</div></div>
+            <div class="gidx-row"><div class="gidx-flag">🇨🇳</div><div class="gidx-name">Shanghai</div><div class="gidx-val">3.182</div><div class="gidx-chg chg-pos">+0.14%</div></div>
+            <div class="gidx-row"><div class="gidx-flag">🇸🇬</div><div class="gidx-name">STI (SGX)</div><div class="gidx-val">3.476</div><div class="gidx-chg chg-neg">-0.08%</div></div>
+            <div class="gidx-row"><div class="gidx-flag">🇬🇧</div><div class="gidx-name">FTSE 100</div><div class="gidx-val">8.241</div><div class="gidx-chg chg-pos">+0.19%</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTOR HEATMAP + CORRELATION + EVENT CALENDAR -->
+      <div style="display:grid;grid-template-columns:1fr 320px;gap:14px;align-items:start">
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div class="card">
+            <div class="card-header"><div class="card-title">🔥 Heatmap Sektor LQ45</div><span style="font-size:11px;color:var(--text-muted)">Hari ini</span></div>
+            <div class="card-body">
+              <div class="sector-grid">
+                <div class="sector-cell">
+                  <div class="sector-name">Perbankan</div>
+                  <div class="sector-chg" style="color:var(--green)">+1.42%</div>
+                  <div class="sector-bar" style="background:rgba(45,212,160,0.4);width:100%"></div>
+                </div>
+                <div class="sector-cell">
+                  <div class="sector-name">Telekomunikasi</div>
+                  <div class="sector-chg" style="color:var(--green)">+0.87%</div>
+                  <div class="sector-bar" style="background:rgba(45,212,160,0.25);width:60%"></div>
+                </div>
+                <div class="sector-cell">
+                  <div class="sector-name">Energi</div>
+                  <div class="sector-chg" style="color:var(--red)">-0.54%</div>
+                  <div class="sector-bar" style="background:rgba(245,94,94,0.3);width:38%"></div>
+                </div>
+                <div class="sector-cell">
+                  <div class="sector-name">Konsumer</div>
+                  <div class="sector-chg" style="color:var(--green)">+0.31%</div>
+                  <div class="sector-bar" style="background:rgba(45,212,160,0.15);width:22%"></div>
+                </div>
+                <div class="sector-cell">
+                  <div class="sector-name">Properti</div>
+                  <div class="sector-chg" style="color:var(--red)">-1.12%</div>
+                  <div class="sector-bar" style="background:rgba(245,94,94,0.4);width:79%"></div>
+                </div>
+                <div class="sector-cell">
+                  <div class="sector-name">Infrastruktur</div>
+                  <div class="sector-chg" style="color:var(--amber)">+0.05%</div>
+                  <div class="sector-bar" style="background:rgba(245,183,49,0.2);width:4%"></div>
+                </div>
+                <div class="sector-cell">
+                  <div class="sector-name">Otomotif</div>
+                  <div class="sector-chg" style="color:var(--red)">-0.78%</div>
+                  <div class="sector-bar" style="background:rgba(245,94,94,0.25);width:55%"></div>
+                </div>
+                <div class="sector-cell">
+                  <div class="sector-name">Tambang</div>
+                  <div class="sector-chg" style="color:var(--green)">+1.91%</div>
+                  <div class="sector-bar" style="background:rgba(45,212,160,0.5);width:100%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><div class="card-title">🔗 Korelasi BBCA vs Variabel Makro</div></div>
+            <div class="card-body" style="padding:8px 14px 14px">
+              <div class="corr-grid">
+                <div></div>
+                <div class="corr-header">BBCA</div>
+                <div class="corr-header">IHSG</div>
+                <div class="corr-header">USD/IDR</div>
+                <div class="corr-header">BI Rate</div>
+                <div class="corr-header">Inflasi</div>
+
+                <div class="corr-row-label">BBCA</div>
+                <div class="corr-cell corr-self">1.00</div>
+                <div class="corr-cell corr-pos-strong">+0.84</div>
+                <div class="corr-cell corr-neg-strong">-0.71</div>
+                <div class="corr-cell corr-neg-med">-0.52</div>
+                <div class="corr-cell corr-neg-weak">-0.23</div>
+
+                <div class="corr-row-label">IHSG</div>
+                <div class="corr-cell corr-pos-strong">+0.84</div>
+                <div class="corr-cell corr-self">1.00</div>
+                <div class="corr-cell corr-neg-strong">-0.68</div>
+                <div class="corr-cell corr-neg-weak">-0.34</div>
+                <div class="corr-cell corr-neg-weak">-0.18</div>
+
+                <div class="corr-row-label">USD/IDR</div>
+                <div class="corr-cell corr-neg-strong">-0.71</div>
+                <div class="corr-cell corr-neg-strong">-0.68</div>
+                <div class="corr-cell corr-self">1.00</div>
+                <div class="corr-cell corr-pos-med">+0.47</div>
+                <div class="corr-cell corr-pos-weak">+0.29</div>
+              </div>
+              <div style="margin-top:10px;font-size:10px;color:var(--text-muted)">Korelasi Pearson berbasis data 12 bulan terakhir. <span style="color:var(--green)">Hijau</span> = positif · <span style="color:var(--red)">Merah</span> = negatif · nilai ±1 = sempurna.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><div class="card-title">📅 Kalender Ekonomi</div><span style="font-size:10px;color:var(--text-muted)">Jun 2025</span></div>
+          <div class="card-body" style="padding:6px 14px 14px">
+            <div class="event-item">
+              <div class="event-date-block"><div class="event-day" style="color:var(--red)">12</div><div class="event-month">Jun</div></div>
+              <div class="event-body">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+                  <div class="event-name">RDG Bank Indonesia</div>
+                  <span class="event-impact event-high">Tinggi</span>
+                </div>
+                <div class="event-desc">Keputusan suku bunga acuan BI. Ekspektasi pasar: tidak berubah di 5,75%.</div>
+                <div style="margin-top:4px;display:flex;gap:10px">
+                  <span class="event-prev">Prev: 5.75%</span>
+                  <span class="event-actual" style="color:var(--amber)">Konsensus: 5.75%</span>
+                </div>
+              </div>
+            </div>
+            <div class="event-item">
+              <div class="event-date-block"><div class="event-day" style="color:var(--amber)">15</div><div class="event-month">Jun</div></div>
+              <div class="event-body">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+                  <div class="event-name">Data Inflasi Mei 2025</div>
+                  <span class="event-impact event-med">Medium</span>
+                </div>
+                <div class="event-desc">CPI bulanan dari BPS. Target BI: 1,5–3,5%.</div>
+                <div style="margin-top:4px;display:flex;gap:10px">
+                  <span class="event-prev">Prev: 2.84%</span>
+                  <span class="event-actual" style="color:var(--text-muted)">Konsensus: 2.70%</span>
+                </div>
+              </div>
+            </div>
+            <div class="event-item">
+              <div class="event-date-block"><div class="event-day" style="color:var(--red)">18</div><div class="event-month">Jun</div></div>
+              <div class="event-body">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+                  <div class="event-name">FOMC — Fed Rate (AS)</div>
+                  <span class="event-impact event-high">Tinggi</span>
+                </div>
+                <div class="event-desc">Keputusan Fed berdampak langsung pada USD/IDR dan arus modal asing.</div>
+                <div style="margin-top:4px;display:flex;gap:10px">
+                  <span class="event-prev">Prev: 5.25%</span>
+                  <span class="event-actual" style="color:var(--text-muted)">Konsensus: 5.00%</span>
+                </div>
+              </div>
+            </div>
+            <div class="event-item">
+              <div class="event-date-block"><div class="event-day">20</div><div class="event-month">Jun</div></div>
+              <div class="event-body">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+                  <div class="event-name">Neraca Perdagangan</div>
+                  <span class="event-impact event-low">Rendah</span>
+                </div>
+                <div class="event-desc">Data ekspor-impor Mei 2025 dari BPS.</div>
+                <div style="margin-top:4px"><span class="event-prev">Prev: +$3.29B</span></div>
+              </div>
+            </div>
+            <div class="event-item">
+              <div class="event-date-block"><div class="event-day">30</div><div class="event-month">Jun</div></div>
+              <div class="event-body">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+                  <div class="event-name">PDB Q1 2025 Final</div>
+                  <span class="event-impact event-med">Medium</span>
+                </div>
+                <div class="event-desc">Rilis final angka pertumbuhan ekonomi Q1 dari BPS.</div>
+                <div style="margin-top:4px"><span class="event-prev">Flash: 5.11% YoY</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script>
+const months=['Q2 23','Q3 23','Q4 23','Q1 24','Q2 24','Q3 24','Q4 24','Q1 25'];
+const gdp=[5.17,4.94,5.04,5.11,5.05,4.95,5.02,5.11];
+const infl=[3.52,2.28,2.61,3.05,2.84,2.12,1.57,2.84];
+
+const ctx=document.getElementById('gdpChart').getContext('2d');
+new Chart(ctx,{type:'line',data:{labels:months,datasets:[
+  {label:'PDB %',data:gdp,borderColor:'#2dd4a0',borderWidth:1.8,pointRadius:2,tension:0.3,yAxisID:'y'},
+  {label:'Inflasi %',data:infl,borderColor:'#f5b731',borderWidth:1.8,pointRadius:2,tension:0.3,yAxisID:'y',borderDash:[4,3]},
+]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false}},scales:{x:{grid:{color:'rgba(255,255,255,0.03)'},ticks:{color:'#505568',font:{size:9}}},y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#505568',font:{size:10},callback:v=>v+'%'}}}}});
+
+const fxMonths=['Jan','Feb','Mar','Apr','Mei','Jun'];
+const fxRates=[15620,15810,15940,16120,15980,15847];
+const ctx2=document.getElementById('fxChart').getContext('2d');
+new Chart(ctx2,{type:'line',data:{labels:fxMonths,datasets:[
+  {label:'USD/IDR',data:fxRates,borderColor:'#4f9cf9',backgroundColor:'rgba(79,156,249,0.06)',borderWidth:1.8,pointRadius:2,tension:0.3,fill:true},
+]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false}},scales:{x:{grid:{color:'rgba(255,255,255,0.03)'},ticks:{color:'#505568',font:{size:10}}},y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#505568',font:{size:10}}}}}});
+</script>
+</body>
+</html>

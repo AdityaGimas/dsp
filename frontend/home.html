@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockSense LQ45 Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="topbar">
+  <div class="logo"><span class="logo-dot"></span>StockSense</div>
+  <div class="topbar-nav">
+    <a class="active">Dashboard</a>
+    <a>Watchlist</a>
+    <a>Portofolio</a>
+    <a>Berita Pasar</a>
+  </div>
+  <div class="live-badge"><span class="live-dot"></span>Live Market</div>
+  <div class="grok-key-btn" onclick="openGrokModal()">
+    <span class="grok-key-dot" id="grokDot"></span>
+    <span id="grokKeyLabel">Groq API Key</span>
+  </div>
+  <div class="avatar">AR</div>
+</nav>
+
+<div class="modal-overlay" id="grokModal">
+  <div class="modal-box">
+    <div class="modal-title">✦ Groq API Key</div>
+    <div class="modal-sub">Masukkan API key dari <strong>console.groq.com</strong> untuk mengaktifkan analisis teknikal dan ringkasan berita oleh Groq LLM.<br>Key hanya tersimpan di browser kamu (localStorage).</div>
+    <input class="modal-input" id="grokKeyInput" type="password" placeholder="gsk_xxxxxxxxxxxxxxxxxxxxxxxx">
+    <div style="font-size:10px;color:var(--text-muted);margin-bottom:12px">Kosongkan dan simpan untuk menghapus key yang tersimpan.</div>
+    <div class="modal-row">
+      <button class="btn btn-primary" onclick="saveGrokKey()">Simpan & Aktifkan</button>
+      <button class="btn btn-ghost" onclick="closeGrokModal()">Batal</button>
+    </div>
+  </div>
+</div>
+
+<div class="app-body">
+  <aside class="sidebar">
+    <div>
+    <div class="sec-label">Analisis</div>
+    <a href="overview.html" class="nav-item active">
+        <span class="nav-icon">◉</span> Overview
+    </a>
+    <a href="forecasting.html" class="nav-item">
+        <span class="nav-icon">⌬</span> Forecasting
+    </a>
+    <a href="berita.html" class="nav-item">
+        <span class="nav-icon">❚❚</span> Berita & Sentimen
+    </a>
+    <a href="indikator.html" class="nav-item">
+        <span class="nav-icon">⚡</span> Indikator Teknikal
+    </a>
+    <a href="makro.html" class="nav-item">
+        <span class="nav-icon">📊</span> Makro Ekonomi
+    </a>
+    </div> 
+    <div style="flex:1;display:flex;flex-direction:column;gap:6px;min-height:0">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:0 8px">
+        <div class="sec-label" style="margin-bottom:0">Semua Saham LQ45</div>
+      </div>
+      <input class="wl-search" placeholder="Cari saham..." id="wlSearch">
+      <div class="wl-list" id="wlList">
+        <div class="loading-overlay"><span class="spinner"></span> Memuat...</div>
+      </div>
+    </div>
+    <div style="flex-shrink:0">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:0 8px;margin-bottom:4px">
+        <div class="sec-label" style="margin-bottom:0">Watchlist Saya</div>
+        <span id="wlCount" style="font-size:10px;font-family:var(--font-mono);color:var(--text-muted)">0</span>
+      </div>
+      <div id="myWatchlist" style="display:flex;flex-direction:column;gap:1px">
+        <div style="padding:10px 8px;font-size:11px;color:var(--text-muted);text-align:center;line-height:1.5">
+          Belum ada saham.<br>Klik ☆ untuk menambahkan.
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="search-bar">
+      <span class="search-label">Pilih Saham</span>
+      <div class="search-input-wrap">
+        <span class="search-dot"></span>
+        <input id="tickerInput" value="BBCA.JK" placeholder="BBCA.JK">
+      </div>
+      <div class="quick-chips" id="quickChips">
+        <span id="chipsEmpty" style="font-size:11px;color:var(--text-muted);font-style:italic;align-self:center">Tambahkan saham ke watchlist ☆</span>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="stock-header">
+        <div class="stock-title">
+          <h1 id="hdrTicker">BBCA</h1>
+          <p id="hdrName">Memuat data...</p>
+        </div>
+        <div style="flex:1"></div>
+        <div class="stock-meta">
+          <div class="meta-item"><div class="meta-label">Market Cap</div><div class="meta-val" id="mktCap">—</div></div>
+          <div class="meta-item"><div class="meta-label">Vol Hari ini</div><div class="meta-val" id="mktVol">—</div></div>
+          <div class="meta-item"><div class="meta-label">52W High</div><div class="meta-val" id="wkHigh" style="color:var(--green)">—</div></div>
+          <div class="meta-item"><div class="meta-label">52W Low</div><div class="meta-val" id="wkLow" style="color:var(--red)">—</div></div>
+          <div class="meta-item"><div class="meta-label">P/E Ratio</div><div class="meta-val" id="peRatio">—</div></div>
+        </div>
+        <div class="stock-price-block">
+          <div class="stock-price" id="curPrice">—</div>
+          <div class="stock-change">
+            <span class="chg-val" id="chgVal">—</span>
+            <span class="chg-pct" id="chgPct">—</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="kpi-grid" style="grid-template-columns:repeat(5,1fr)">
+        <div class="kpi-card kpi-c-blue">
+          <div class="kpi-label">Akurasi Model ML</div>
+          <div class="kpi-val" id="kpiAccuracy" style="color:var(--blue)">—</div>
+          <div class="kpi-sub" id="kpiAccSub">Memuat prediksi...</div>
+        </div>
+        <div class="kpi-card kpi-c-blue">
+          <div class="kpi-label">Prediksi ML Besok</div>
+          <div class="kpi-val" id="kpiPred" style="color:var(--blue)">—</div>
+          <div class="kpi-sub" id="kpiPredSub">—</div>
+        </div>
+        <div class="kpi-card kpi-c-purple">
+          <div class="kpi-label">Groq Teknikal</div>
+          <div class="kpi-val" id="kpiGrokTech" style="color:var(--purple)">—</div>
+          <div class="kpi-sub" id="kpiGrokTechSub">Menunggu analisis...</div>
+        </div>
+        <div class="kpi-card kpi-c-teal">
+          <div class="kpi-label">Sentimen Berita</div>
+          <div class="kpi-val" id="kpiSent" style="color:var(--teal)">—</div>
+          <div class="kpi-sub" id="kpiSentSub">Klik "Ambil Berita"</div>
+        </div>
+        <div class="kpi-card kpi-c-amber">
+          <div class="kpi-label">Sinyal Teknikal</div>
+          <div class="kpi-val" id="kpiSignal" style="color:var(--green)">—</div>
+          <div class="kpi-sub" id="kpiSignalSub">—</div>
+        </div>
+      </div>
+
+      <div class="main-grid">
+        <div class="left-col">
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📈 Harga Historis & Prediksi — <span id="chartTicker">BBCA</span></div>
+              <div class="tab-group">
+                <span class="tab" onclick="loadHistory('1mo',this)">1M</span>
+                <span class="tab" onclick="loadHistory('3mo',this)">3M</span>
+                <span class="tab active-tab" onclick="loadHistory('6mo',this)">6M</span>
+                <span class="tab" onclick="loadHistory('1y',this)">1Y</span>
+              </div>
+            </div>
+            <div class="chart-legend">
+              <span class="leg-item"><span class="leg-line" style="background:#4f9cf9"></span>Historis</span>
+              <span class="leg-item"><span class="leg-line" style="background:#4f9cf9;border-top:2px dashed #4f9cf9;height:0"></span>ML Prediksi</span>
+              <span class="leg-item"><span class="leg-line" style="background:#a78bfa;border-top:2px dashed #a78bfa;height:0"></span>Groq Prediksi</span>
+              <span class="leg-item"><span class="leg-line" style="background:#a78bfa"></span>MA 20</span>
+            </div>
+            <div class="card-body">
+              <div class="chart-wrap">
+                <canvas id="mainChart"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><div class="card-title">⚡ Indikator Teknikal</div></div>
+            <div class="card-body">
+              <div class="ind-grid" id="indGrid">
+                <div class="loading-overlay" style="grid-column:1/-1"><span class="spinner"></span> Menghitung indikator...</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🔮 Prediksi Teknikal — Perbandingan</div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div class="tab-group">
+                  <span class="tab active-tab">7H</span>
+                  <span class="tab">14H</span>
+                  <span class="tab">30H</span>
+                </div>
+                <button class="fetch-news-btn" id="runGroqTechBtn" onclick="triggerGroqTechnical()" style="border-radius:var(--r-sm);background:rgba(167,139,250,0.1);border-color:rgba(167,139,250,0.2);color:var(--purple)">
+                  <span class="spin-sm" style="border-top-color:var(--purple)"></span>
+                  <span class="btn-txt">▶ Analisis Groq</span>
+                </button>
+                <span class="analysis-time" id="groqTechTime"></span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="dual-pred-grid" id="dualPredCards">
+                <div class="pred-source-card psc-ml">
+                  <div class="pred-src-badge badge-ml">⚡ Model ML (FastAPI)</div>
+                  <div class="loading-overlay" style="padding:10px 0"><span class="spinner"></span></div>
+                </div>
+                <div class="pred-source-card psc-grok">
+                  <div class="pred-src-badge badge-grok">✦ Groq LLM</div>
+                  <div class="loading-overlay" style="padding:10px 0"><span class="spinner"></span></div>
+                </div>
+              </div>
+              <div class="pred-agree" id="predAgree" style="display:none">
+                <span class="agree-dot" id="agreeDot"></span>
+                <span id="agreeText" style="font-size:11px"></span>
+              </div>
+              <div class="pred-grid" id="predGrid">
+                <div class="loading-overlay" style="grid-column:1/-1"><span class="spinner"></span> Memuat prediksi...</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><div class="card-title">🎯 Rekomendasi Akhir</div></div>
+            <div class="card-body" id="recoBody">
+              <div class="loading-overlay"><span class="spinner"></span> Menghitung rekomendasi...</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="right-col">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🌐 Sentimen Berita</div>
+              <div style="display:flex;align-items:center;gap:6px">
+                <span class="analysis-time" id="newsTime"></span>
+                <button class="fetch-news-btn" id="fetchNewsBtn" onclick="fetchNews()">
+                  <span class="spin-sm"></span>
+                  <span class="btn-txt">↻ Ambil Berita</span>
+                </button>
+              </div>
+            </div>
+            <div class="card-body" id="sentBody">
+              <div style="text-align:center;padding:16px 0;font-size:12px;color:var(--text-muted);line-height:1.7">
+                Klik <strong style="color:var(--green)">↻ Ambil Berita</strong> untuk scrape<br>berita terkini & analisis sentimen.
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📰 Berita Terkini</div>
+              <span id="newsCount" style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono)"></span>
+            </div>
+            <div class="card-body" style="padding:6px 16px 14px" id="newsBody">
+              <div style="color:var(--text-muted);font-size:12px;padding:12px 0;text-align:center">
+                Belum ada berita. Klik "↻ Ambil Berita".
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
