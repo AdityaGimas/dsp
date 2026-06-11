@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+httpx
+python-dotenv
+yfinance
+pandas
+numpy
+ta
+feedparser
+beautifulsoup4
+lxml
