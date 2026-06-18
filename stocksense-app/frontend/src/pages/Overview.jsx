@@ -101,7 +101,7 @@ function mockPrediction(ticker) {
 }
 
 export default function Overview() {
-  const { currentTicker, groqKey } = useApp()
+  const { currentTicker } = useApp()
 
   const [info, setInfo] = useState(null)
   const [hist, setHist] = useState([])
@@ -193,7 +193,6 @@ export default function Overview() {
         current_price: info?.current_price || 0,
         indicators,
         ml_prediction: mlPred || undefined,
-        api_key: groqKey || undefined,
       }
       const res = await api.groqTechnical(payload)
       setGroqTech(res)
@@ -231,24 +230,19 @@ export default function Overview() {
       setNewsTs(Date.now())
       saveCache(currentTicker, "news", ln)
 
-      if (groqKey) {
-        setAiSummary("Membuat ringkasan AI...")
-        api
-          .groqNewsSummary({
-            ticker: currentTicker,
-            articles: merged.map((a) => ({ source: a.source, title: a.title })),
-            sentiment_summary: sentData.summary,
-            api_key: groqKey,
-          })
-          .then((r) => {
-            const txt = r.summary || r.main_theme || "Groq tidak memberikan ringkasan."
-            setAiSummary(txt)
-            saveCache(currentTicker, "groqNewsSummary", txt)
-          })
-          .catch((e) => setAiSummary("Gagal ringkasan Groq: " + e.message))
-      } else {
-        setAiSummary("Set Groq API Key → dapatkan ringkasan AI berita.")
-      }
+      setAiSummary("Membuat ringkasan AI...")
+      api
+        .groqNewsSummary({
+          ticker: currentTicker,
+          articles: merged.map((a) => ({ source: a.source, title: a.title })),
+          sentiment_summary: sentData.summary,
+        })
+        .then((r) => {
+          const txt = r.summary || r.main_theme || "Groq tidak memberikan ringkasan."
+          setAiSummary(txt)
+          saveCache(currentTicker, "groqNewsSummary", txt)
+        })
+        .catch((e) => setAiSummary("Gagal ringkasan Groq: " + e.message))
     } catch (e) {
       setNewsErr(e.message)
     } finally {
@@ -298,16 +292,7 @@ export default function Overview() {
           g.addColorStop(1, "rgba(79,156,249,0)")
           return g
         },
-      },
-      {
-        label: "MA 20",
-        data: [...ma20, ...padPred],
-        borderColor: "#a78bfa",
-        borderWidth: 1.5,
-        pointRadius: 0,
-        tension: 0.4,
-        fill: false,
-      },
+      }
     ]
 
     if (predDates.length && Number.isFinite(lastClose)) {
@@ -508,7 +493,6 @@ export default function Overview() {
                 <span className="leg-item"><span className="leg-line" style={S.legSolidBlue} />Historis</span>
                 <span className="leg-item"><span className="leg-line" style={S.legDashBlue} />XGBoost Prediksi</span>
                 <span className="leg-item"><span className="leg-line" style={S.legDashPurple} />LLM Prediksi</span>
-                <span className="leg-item"><span className="leg-line" style={S.legSolidPurple} />MA 20</span>
               </div>
               <div className="card-body">
                 <div className="chart-wrap">
@@ -548,7 +532,7 @@ export default function Overview() {
                 </div>
               </div>
               <div className="card-body">
-                <div className="dual-pred-grid">{renderDualPred(mlPred, groqTech, groqKey, groqTechBusy)}</div>
+                <div className="dual-pred-grid">{renderDualPred(mlPred, groqTech, groqTechBusy)}</div>
                 {mlPred && groqTech ? renderAgree(mlPred, groqTech) : null}
                 <div className="pred-grid">{renderPredGrid(mlPred, groqTech, info)}</div>
               </div>
@@ -578,7 +562,7 @@ export default function Overview() {
                   </button>
                 </div>
               </div>
-              <div className="card-body">{renderSentiment(news, newsErr, newsBusy, aiSummary, groqKey)}</div>
+              <div className="card-body">{renderSentiment(news, newsErr, newsBusy, aiSummary)}</div>
             </div>
 
             <div className="card">
@@ -633,7 +617,7 @@ function renderIndicators(d) {
   })
 }
 
-function renderDualPred(ml, grok, groqKey, busy) {
+function renderDualPred(ml, grok, busy) {
   const mlRecStyle = ml ? { color: recColor(ml.recommendation) } : null
   const grokRecStyle = grok ? { color: recColor(grok.recommendation) } : null
   const reasonsStyle = { marginTop: 6, fontSize: 10, color: "var(--text-muted)", lineHeight: 1.5 }
@@ -663,9 +647,11 @@ function renderDualPred(ml, grok, groqKey, busy) {
   const grokBody = grok ? (
     <>
       <div className="pred-src-badge badge-grok">✦ Prediksi LLM Langsung</div>
-      <div className="pred-src-price">{fmt(grok.price_tomorrow)}</div>
-      <span className="pred-src-chg" style={rangeStyle}>
-        {"Range: " + fmt(grok.price_min_5d || grok.price_range_5d?.min) + "–" + fmt(grok.price_max_5d || grok.price_range_5d?.max)}
+      <div className="pred-src-price" style={{fontSize: 20}}>
+        {fmt(grok.price_min_5d || grok.price_range_5d?.min)} – {fmt(grok.price_max_5d || grok.price_range_5d?.max)}
+      </div>
+      <span className="pred-src-chg" style={{ ...rangeStyle, padding: "2px 8px", borderRadius: 4, display: "inline-block", marginBottom: 8 }}>
+        {"Besok: " + fmt(grok.price_tomorrow)}
       </span>
       <div className="pred-src-meta">
         <div className="pred-src-row"><span className="pred-src-k">Confidence</span><span className="pred-src-v">{Math.round((grok.confidence || 0) * 100) + "%"}</span></div>
@@ -676,7 +662,7 @@ function renderDualPred(ml, grok, groqKey, busy) {
   ) : (
     <>
       <div className="pred-src-badge badge-grok">✦ Prediksi LLM Langsung</div>
-      <div style={emptyStyle}>{busy ? "Menganalisis..." : groqKey ? "Menunggu analisis..." : "Set Groq API Key untuk mengaktifkan"}</div>
+      <div style={emptyStyle}>{busy ? "Menganalisis..." : "Menunggu analisis..."}</div>
     </>
   )
 
@@ -834,7 +820,7 @@ function renderFinalReco(ml, grok, news) {
   )
 }
 
-function renderSentiment(news, err, busy, aiSummary, groqKey) {
+function renderSentiment(news, err, busy, aiSummary) {
   if (busy && !news) {
     return (
       <div className="loading-overlay">
@@ -890,7 +876,7 @@ function renderSentiment(news, err, busy, aiSummary, groqKey) {
       </div>
       <div className="ai-box">
         <div className="ai-lbl"><span>✦</span> Ringkasan Groq AI</div>
-        <span>{aiSummary || (groqKey ? "Membuat ringkasan AI..." : "Set Groq API Key → dapatkan ringkasan AI.")}</span>
+        <span>{aiSummary || "Membuat ringkasan AI..."}</span>
       </div>
     </>
   )

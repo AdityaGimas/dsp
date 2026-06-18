@@ -67,8 +67,8 @@ HARGA SAAT INI: Rp {req.current_price:,.0f}
 - Volume Ratio: {ind.get('volume_ratio',{}).get('value','?')}x
 - Referensi ML: {ml.get('recommendation','?')} conf {round(ml.get('confidence',0)*100)}%
 
-Balas HANYA JSON valid ini tanpa teks lain:
-{{"price_tomorrow":<angka>,"price_range_5d":{{"min":<angka>,"max":<angka>}},"recommendation":"BUY"|"SELL"|"HOLD","confidence":<0.0-1.0>,"reasons":["r1","r2","r3"],"summary":"<2 kalimat>"}}"""
+Balas HANYA JSON valid ini tanpa teks lain (ganti angka-angka dengan estimasi nyatanya, bukan string):
+{{"price_tomorrow": 5100,"price_range_5d":{{"min": 4900,"max": 5300}},"recommendation":"BUY"|"SELL"|"HOLD","confidence":0.85,"reasons":["r1","r2","r3"],"summary":"<2 kalimat>"}}"""
     res  = await groq_chat([{"role":"user","content":prompt}], key, MODEL_TECHNICAL)
     data = parse_json(res["choices"][0]["message"]["content"])
     return {"ticker": req.ticker, "source": "groq_technical", **data}
@@ -129,8 +129,8 @@ SINYAL ML: {ml.get('recommendation','?')} conf {round(ml.get('confidence',0)*100
 SINYAL GROQ TEKNIKAL: {gt.get('recommendation','?')} conf {round(gt.get('confidence',0)*100)}% estimasi {gt.get('price_tomorrow','?')}
 SINYAL BERITA: {gn.get('news_recommendation','?')} conf {round(gn.get('news_confidence',0)*100)}% skor sentimen {s.get('score',50)}/100
 
-Balas HANYA JSON valid ini tanpa teks lain:
-{{"final_recommendation":"BUY"|"SELL"|"HOLD","overall_confidence":<0.0-1.0>,"signal_agreement":"Sepakat"|"Mayoritas"|"Bertentangan","entry_price":<angka>,"stop_loss":<angka>,"take_profit_1":<angka>,"take_profit_2":<angka>,"risk_reward_ratio":<angka>,"summary":"<2 kalimat>"}}"""
+Balas HANYA JSON valid ini tanpa teks lain (ganti angka-angka dengan nilai nyatanya, bukan string):
+{{"final_recommendation":"BUY"|"SELL"|"HOLD","overall_confidence":0.85,"signal_agreement":"Sepakat"|"Mayoritas"|"Bertentangan","entry_price": 5000,"stop_loss": 4800,"take_profit_1": 5300,"take_profit_2": 5500,"risk_reward_ratio": 2.5,"summary":"<2 kalimat>"}}"""
     res  = await groq_chat([{"role":"user","content":prompt}], key, MODEL_FINAL_RECO, max_tokens=400)
     data = parse_json(res["choices"][0]["message"]["content"])
     return {"ticker": req.ticker, **data}

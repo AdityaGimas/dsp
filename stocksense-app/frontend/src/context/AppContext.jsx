@@ -31,11 +31,6 @@ const FALLBACK_STOCKS = [
 export function AppProvider({ children }) {
   const [allStocks, setAllStocks] = useState([])
   const [currentTicker, setCurrentTicker] = useState("BBCA.JK")
-  const [grokModalOpen, setGrokModalOpen] = useState(false)
-
-  const [groqKey, setGroqKeyState] = useState(
-    () => localStorage.getItem("groq_api_key") || "",
-  )
   const [watchlist, setWatchlist] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("wl_stocksense") || '["BBCA.JK"]')
@@ -55,12 +50,6 @@ export function AppProvider({ children }) {
     localStorage.setItem("wl_stocksense", JSON.stringify(watchlist))
   }, [watchlist])
 
-  const setGroqKey = useCallback((v) => {
-    setGroqKeyState(v)
-    if (v) localStorage.setItem("groq_api_key", v)
-    else localStorage.removeItem("groq_api_key")
-  }, [])
-
   const addToWatchlist = useCallback(
     (t) => setWatchlist((w) => (w.includes(t) ? w : [...w, t])),
     [],
@@ -75,14 +64,10 @@ export function AppProvider({ children }) {
     allStocks,
     currentTicker,
     setCurrentTicker,
-    groqKey,
-    setGroqKey,
     watchlist,
     addToWatchlist,
     removeFromWatchlist,
     isWatchlisted,
-    grokModalOpen,
-    setGrokModalOpen,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

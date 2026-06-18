@@ -36,7 +36,7 @@ const TOPICS = [
 ]
 
 export default function BeritaSentimen() {
-  const { currentTicker, groqKey } = useApp()
+  const { currentTicker } = useApp()
   const code = currentTicker.replace(".JK", "")
   const [news, setNews] = useState(null)
   const [aiSummary, setAiSummary] = useState("")
@@ -62,20 +62,15 @@ export default function BeritaSentimen() {
       }))
       setNews({ total_articles: sentData.total_articles, articles: merged, summary: sentData.summary })
 
-      if (groqKey) {
-        setAiSummary("Membuat ringkasan AI...")
-        api
-          .groqNewsSummary({
-            ticker: currentTicker,
-            articles: merged.map((a) => ({ source: a.source, title: a.title })),
-            sentiment_summary: sentData.summary,
-            api_key: groqKey,
-          })
-          .then((r) => setAiSummary(r.summary || r.main_theme || "Groq tidak memberikan ringkasan."))
-          .catch((e) => setAiSummary("Gagal ringkasan Groq: " + e.message))
-      } else {
-        setAiSummary("Set Groq API Key → dapatkan ringkasan AI berita.")
-      }
+      setAiSummary("Membuat ringkasan AI...")
+      api
+        .groqNewsSummary({
+          ticker: currentTicker,
+          articles: merged.map((a) => ({ source: a.source, title: a.title })),
+          sentiment_summary: sentData.summary,
+        })
+        .then((r) => setAiSummary(r.summary || r.main_theme || "Groq tidak memberikan ringkasan."))
+        .catch((e) => setAiSummary("Gagal ringkasan Groq: " + e.message))
     } catch (e) {
       setErr(e.message)
     } finally {
@@ -180,7 +175,7 @@ export default function BeritaSentimen() {
           <div className="col-gap14">
             <div className="ai-summary">
               <div className="ai-tag">✦ Ringkasan AI · Groq</div>
-              <div className="ai-text">{aiSummary || (groqKey ? "Membuat ringkasan AI..." : "Set Groq API Key → dapatkan ringkasan AI.")}</div>
+              <div className="ai-text">{aiSummary || "Membuat ringkasan AI..."}</div>
             </div>
 
             <div className="card">
