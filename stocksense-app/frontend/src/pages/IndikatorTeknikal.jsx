@@ -138,19 +138,7 @@ export default function IndikatorTeknikal() {
       <div className="content">
         {err && <div className="error-msg">{err}</div>}
 
-        <div className="sig-hero">
-          {cards.map((c, i) => {
-            const cls = sigClass(c.sig)
-            return (
-              <div className={"sig-card sig-" + cls} key={i}>
-                <div className="sig-name">{c.name}</div>
-                <div className="sig-val" style={sigStyle(c.sig)}>{c.val}</div>
-                <div className={"sig-signal sig-signal-" + cls}>{c.sig}</div>
-                <div className="sig-desc">{c.desc}</div>
-              </div>
-            )
-          })}
-        </div>
+
 
         <div className="row-main-320">
           <div className="col-gap14">
@@ -171,38 +159,41 @@ export default function IndikatorTeknikal() {
               </div>
             </div>
 
-            <div className="ind-detail">
-              <div className="ind-d-card">
-                <div className="ind-d-header"><div className="ind-d-title">RSI (14)</div><span className="sig-signal" style={sigStyle(rsi?.signal)}>{rsi?.signal || "—"}</span></div>
-                <div className="ind-d-body">
+            <div className="row-2" style={{marginTop: 16}}>
+              <div className="card">
+                <div className="card-header"><div className="card-title">RSI (14)</div><span className="sig-signal" style={sigStyle(rsi?.signal)}>{rsi?.signal || "—"}</span></div>
+                <div className="card-body">
                   <div className="ind-val-big" style={St.blue}>{rsi ? rsi.value : "—"}</div>
                   <div className="ind-subtitle">Relative Strength Index</div>
-                  <div className="osc-wrap"><div className="osc-track"><div className="osc-needle" style={rsiNeedleStyle} /></div><div className="osc-labels"><span>0</span><span>30</span><span>70</span><span>100</span></div></div>
+                  <div className="osc-wrap" style={{marginTop: 16}}><div className="osc-track"><div className="osc-needle" style={rsiNeedleStyle} /></div><div className="osc-labels"><span>0</span><span>30</span><span>70</span><span>100</span></div></div>
                 </div>
               </div>
-              <div className="ind-d-card">
-                <div className="ind-d-header"><div className="ind-d-title">MACD</div><span className="sig-signal" style={sigStyle(macd?.signal)}>{macd?.signal || "—"}</span></div>
-                <div className="ind-d-body">
+              <div className="card">
+                <div className="card-header"><div className="card-title">MACD</div><span className="sig-signal" style={sigStyle(macd?.signal)}>{macd?.signal || "—"}</span></div>
+                <div className="card-body">
                   <div className="ind-val-big" style={sigStyle(macd?.signal)}>{macd ? macd.value : "—"}</div>
                   <div className="ind-subtitle">Signal {macd ? macd.signal_line : "—"} · Hist {macd ? macd.histogram : "—"}</div>
                   <div className="chart-wrap" style={St.chart120}><Bar data={macdData} options={macdOpts} /></div>
                 </div>
               </div>
-              <div className="ind-d-card">
-                <div className="ind-d-header"><div className="ind-d-title">Bollinger Bands</div><span className="sig-signal sig-signal-hold">{bb?.position || "—"}</span></div>
-                <div className="ind-d-body">
+            </div>
+            
+            <div className="row-2" style={{marginTop: 16}}>
+              <div className="card">
+                <div className="card-header"><div className="card-title">Bollinger Bands</div><span className="sig-signal sig-signal-hold">{bb?.position || "—"}</span></div>
+                <div className="card-body">
                   <div className="ind-stat-row"><span className="ind-sk">Upper</span><span className="ind-sv">{bb ? fmt(bb.upper) : "—"}</span></div>
                   <div className="ind-stat-row"><span className="ind-sk">Mid (MA20)</span><span className="ind-sv">{bb ? fmt(bb.mid) : "—"}</span></div>
                   <div className="ind-stat-row"><span className="ind-sk">Lower</span><span className="ind-sv">{bb ? fmt(bb.lower) : "—"}</span></div>
                   <div className="ind-stat-row"><span className="ind-sk">Posisi</span><span className="ind-sv" style={St.blue}>{bb?.position || "—"}</span></div>
                 </div>
               </div>
-              <div className="ind-d-card">
-                <div className="ind-d-header"><div className="ind-d-title">Stochastic & Volume</div><span className="sig-signal" style={sigStyle(stoch?.signal)}>{stoch?.signal || "—"}</span></div>
-                <div className="ind-d-body">
+              <div className="card">
+                <div className="card-header"><div className="card-title">Stochastic & Volume</div><span className="sig-signal" style={sigStyle(stoch?.signal)}>{stoch?.signal || "—"}</span></div>
+                <div className="card-body">
                   <div className="ind-val-big" style={St.amber}>{stoch ? stoch.value : "—"}</div>
                   <div className="ind-subtitle">Stochastic Oscillator</div>
-                  <div className="osc-wrap"><div className="osc-track"><div className="osc-needle" style={stochNeedleStyle} /></div><div className="osc-labels"><span>0</span><span>20</span><span>80</span><span>100</span></div></div>
+                  <div className="osc-wrap" style={{marginTop: 16, marginBottom: 16}}><div className="osc-track"><div className="osc-needle" style={stochNeedleStyle} /></div><div className="osc-labels"><span>0</span><span>20</span><span>80</span><span>100</span></div></div>
                   <div className="vol-stat"><span className="vol-sk">Volume Ratio</span><span className="vol-sv" style={sigStyle(vol?.signal)}>{vol ? vol.value + "x" : "—"}</span></div>
                   <div className="vol-stat"><span className="vol-sk">Status Volume</span><span className="vol-sv">{vol?.signal || "—"}</span></div>
                 </div>

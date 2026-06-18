@@ -17,7 +17,7 @@ def get_macro_data():
     for key, symbol in tickers.items():
         try:
             t = yf.Ticker(symbol)
-            if key == "USDIDR":
+            if key in ["USDIDR", "IHSG"]:
                 hist = t.history(period="6mo")
             else:
                 hist = t.history(period="5d")
@@ -33,21 +33,17 @@ def get_macro_data():
                     "change_pct": round(change_pct, 2)
                 }
                 
-                if key == "USDIDR":
-                    # Resample to monthly data for the chart, or weekly.
-                    # To keep it simple, get the close prices at the end of each month.
+                if key in ["USDIDR", "IHSG"]:
                     monthly = hist['Close'].resample('ME').last()
                     labels = monthly.index.strftime('%b').tolist()
-                    data = [round(x, 2) for x in monthly.tolist()]
+                    data = [round(x, 2) if key == "USDIDR" else round(x, 0) for x in monthly.tolist()]
                     
-                    # map English month abbreviations to Indonesian if desired, but we can just use the short ones
-                    # e.g., 'Jan', 'Feb', 'Mar'
-                    
-                    results["charts"] = {
-                        "USDIDR": {
-                            "labels": labels,
-                            "data": data
-                        }
+                    if "charts" not in results:
+                        results["charts"] = {}
+                        
+                    results["charts"][key] = {
+                        "labels": labels,
+                        "data": data
                     }
             else:
                 results[key] = None

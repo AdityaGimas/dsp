@@ -422,35 +422,6 @@ export default function Overview() {
           </div>
         </div>
         
-        {macroData && (
-          <div style={{
-            display: 'flex', flexWrap: 'wrap', gap: 24, 
-            background: 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.01) 100%)', 
-            padding: '12px 20px', borderRadius: 12, 
-            marginTop: 16, marginBottom: 16, 
-            fontSize: 13, border: '1px solid rgba(255,255,255,0.08)',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
-            backdropFilter: 'blur(10px)',
-            alignItems: 'center'
-          }}>
-            <div style={{color: 'var(--purple)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6}}>
-              <span style={{fontSize: 16}}>🌍</span> Kondisi Makro Terkini
-            </div>
-            <div style={{width: 1, height: 24, background: 'rgba(255,255,255,0.1)'}}></div>
-            <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
-              <span style={{color: 'var(--text-muted)'}}>IHSG:</span> 
-              <strong style={{color: macroData.IHSG?.change_pct >= 0 ? 'var(--green)' : 'var(--red)', letterSpacing: '0.5px'}}>{macroData.IHSG?.value?.toLocaleString('id-ID')}</strong>
-            </div>
-            <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
-              <span style={{color: 'var(--text-muted)'}}>USD/IDR:</span> 
-              <strong style={{color: 'var(--text-bright)', letterSpacing: '0.5px'}}>{macroData.USDIDR?.value?.toLocaleString('id-ID')}</strong>
-            </div>
-            <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
-              <span style={{color: 'var(--text-muted)'}}>BI Rate:</span> 
-              <strong style={{color: 'var(--text-bright)', letterSpacing: '0.5px'}}>{macroData.BIRate?.value}%</strong>
-            </div>
-          </div>
-        )}
 
         <div className="kpi-grid" style={S.kpiGrid}>
           <div className="kpi-card kpi-c-blue">
@@ -538,6 +509,17 @@ export default function Overview() {
                 <div className="ind-grid">{renderIndicators(indicators)}</div>
               </div>
             </div>
+
+            {macroData && (
+              <div className="card">
+                <div className="card-header">
+                  <div className="card-title">🌍 Makro Ekonomi</div>
+                </div>
+                <div className="card-body">
+                  <div className="ind-grid">{renderMacroCards(macroData)}</div>
+                </div>
+              </div>
+            )}
 
             <div className="card">
               <div className="card-header">
@@ -647,6 +629,41 @@ function renderIndicators(d) {
         <div className="ind-label">{item.label}</div>
         <div className="ind-val" style={valStyle}>{item.val}</div>
         <div className="ind-sig" style={sigStyle}>{item.sig || "—"}</div>
+        <div className="ind-track">
+          <div className="ind-fill" style={fillStyle} />
+        </div>
+      </div>
+    )
+  })
+}
+
+function renderMacroCards(d) {
+  if (!d) return null
+  const cards = [
+    { name: "PDB (YoY)", val: (d.GDP?.value || 0) + "%", sig: d.GDP?.change_pct > 0 ? "Naik" : "Turun", desc: "Kuartal Terakhir", small: false },
+    { name: "Inflasi (YoY)", val: (d.Inflation?.value || 0) + "%", sig: d.Inflation?.change_pct > 0 ? "Naik" : "Turun", desc: "Bulan Terakhir", small: false },
+    { name: "BI Rate", val: (d.BIRate?.value || 0) + "%", sig: d.BIRate?.desc || "Tetap", desc: "Suku Bunga Acuan", small: false },
+    { name: "USD/IDR", val: "Rp " + (d.USDIDR?.value?.toLocaleString("id-ID") || 0), sig: d.USDIDR?.change_pct > 0 ? "Melemah" : "Menguat", desc: "Nilai Tukar Rupiah", small: true },
+    { name: "IHSG", val: d.IHSG?.value?.toLocaleString("id-ID") || 0, sig: d.IHSG?.change_pct > 0 ? "Bullish" : "Bearish", desc: "Indeks Harga Saham", small: true },
+  ]
+  
+  return cards.map((c, i) => {
+    let sigVal = "Netral"
+    if (c.name === "USD/IDR") sigVal = c.sig === "Menguat" ? "Beli" : "Jual"
+    else if (c.name === "Inflasi (YoY)") sigVal = c.sig === "Turun" ? "Beli" : "Jual"
+    else sigVal = (c.sig === "Naik" || c.sig === "Bullish") ? "Beli" : (c.sig === "Tetap" ? "Netral" : "Jual")
+    
+    const col = indColor(sigVal)
+    const valStyle = c.small ? { color: col, fontSize: 13 } : { color: col }
+    const sigStyle = { color: col }
+    const pct = sigVal === "Beli" ? 80 : (sigVal === "Jual" ? 20 : 50)
+    const fillStyle = { width: pct + "%", background: col }
+
+    return (
+      <div className="ind-item" key={i}>
+        <div className="ind-label">{c.name}</div>
+        <div className="ind-val" style={valStyle}>{c.val}</div>
+        <div className="ind-sig" style={sigStyle}>{c.sig || "—"}</div>
         <div className="ind-track">
           <div className="ind-fill" style={fillStyle} />
         </div>
