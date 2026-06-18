@@ -111,6 +111,9 @@ export default function Overview() {
   const [groqTech, setGroqTech] = useState(null)
   const [news, setNews] = useState(null)
   const [aiSummary, setAiSummary] = useState("")
+  const [macroData, setMacroData] = useState(null)
+  const [finalReco, setFinalReco] = useState(null)
+  const [finalRecoBusy, setFinalRecoBusy] = useState(false)
 
   const [groqTechBusy, setGroqTechBusy] = useState(false)
   const [groqTechErr, setGroqTechErr] = useState("")
@@ -131,6 +134,7 @@ export default function Overview() {
     setAiSummary("")
     setGroqTechTs(null)
     setNewsTs(null)
+    setFinalReco(null)
 
     const cache = loadCache(t)
     if (cache) {
@@ -168,6 +172,10 @@ export default function Overview() {
       alive = false
     }
   }, [currentTicker])
+
+  useEffect(() => {
+    api.getMacro().then(d => setMacroData(d.data)).catch(console.error)
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -247,6 +255,32 @@ export default function Overview() {
       setNewsErr(e.message)
     } finally {
       setNewsBusy(false)
+    }
+  }
+
+  async function fetchFinalReco() {
+    if (!mlPred) {
+      alert("Tunggu ML prediksi selesai dulu.")
+      return
+    }
+    setFinalRecoBusy(true)
+    try {
+      const payload = {
+        ticker: currentTicker,
+        current_price: info?.current_price || 0,
+        ml_prediction: mlPred,
+        groq_technical: groqTech || undefined,
+        sentiment_summary: news?.sentiment_summary || undefined,
+        groq_news: news || undefined,
+        macro_data: macroData || undefined,
+      }
+      const res = await api.groqFinalReco(payload)
+      setFinalReco(res)
+    } catch (e) {
+      console.error(e)
+      alert("Gagal memanggil rekomendasi akhir AI: " + e.message)
+    } finally {
+      setFinalRecoBusy(false)
     }
   }
 
@@ -422,6 +456,15 @@ export default function Overview() {
             </div>
           </div>
         </div>
+        
+        {macroData && (
+          <div style={{display: 'flex', gap: 20, background: 'rgba(255,255,255,0.03)', padding: '8px 16px', borderRadius: 8, marginTop: 16, marginBottom: 16, fontSize: 12, border: '1px solid rgba(255,255,255,0.05)'}}>
+            <div style={{color: 'var(--text-muted)'}}>🌍 Kondisi Makro:</div>
+            <div><span style={{color: 'var(--text-muted)'}}>IHSG:</span> <strong style={{color: macroData.IHSG?.change_pct >= 0 ? 'var(--green)' : 'var(--red)'}}>{macroData.IHSG?.value?.toLocaleString('id-ID')}</strong></div>
+            <div><span style={{color: 'var(--text-muted)'}}>USD/IDR:</span> <strong>{macroData.USDIDR?.value?.toLocaleString('id-ID')}</strong></div>
+            <div><span style={{color: 'var(--text-muted)'}}>BI Rate:</span> <strong>{macroData.BIRate?.value}%</strong></div>
+          </div>
+        )}
 
         <div className="kpi-grid" style={S.kpiGrid}>
           <div className="kpi-card kpi-c-blue">
@@ -540,9 +583,18 @@ export default function Overview() {
 
             <div className="card">
               <div className="card-header">
-                <div className="card-title">🎯 Rekomendasi Akhir</div>
+                <div className="card-title">🎯 Rekomendasi Akhir AI</div>
+                <button
+                  className={"fetch-news-btn " + (finalRecoBusy ? "loading" : "")}
+                  style={S.groqBtn}
+                  onClick={fetchFinalReco}
+                  disabled={finalRecoBusy || !mlPred}
+                >
+                  <span className="spin-sm" style={S.spinPurple} />
+                  <span className="btn-txt">{finalRecoBusy ? "Menganalisis..." : "▶ Minta AI Putuskan"}</span>
+                </button>
               </div>
-              <div className="card-body">{renderFinalReco(mlPred, groqTech, news)}</div>
+              <div className="card-body">{renderFinalReco(mlPred, groqTech, news, finalReco, finalRecoBusy)}</div>
             </div>
           </div>
 
@@ -725,7 +777,14 @@ function renderPredGrid(ml, grok, info) {
   return cells
 }
 
-function renderFinalReco(ml, grok, news) {
+function renderFinalReco(ml, grok, news, apiRes, busy) {
+  if (busy) {
+    return (
+      <div className="loading-overlay">
+        <span className="spinner" /> AI sedang menyusun rekomendasi akhir...
+      </div>
+    )
+  }
   if (!ml) {
     return (
       <div className="loading-overlay">
@@ -734,30 +793,44 @@ function renderFinalReco(ml, grok, news) {
     )
   }
   const scores = { BUY: 1, HOLD: 0, SELL: -1 }
-  let totalWeight = 0
-  let weighted = 0
-  const mlScore = scores[ml.recommendation] || 0
+  let finalRec = "HOLD"
+  let finalConf = 50
+  let stopLoss = 0
+  let entry = 0
+  let target = 0
   const mlConf = ml.confidence || 0.5
-  weighted += mlScore * mlConf * 0.4
-  totalWeight += 0.4
-  if (grok) {
-    weighted += (scores[grok.recommendation] || 0) * (grok.confidence || 0.5) * 0.35
-    totalWeight += 0.35
+  
+  if (apiRes && apiRes.final_recommendation) {
+    finalRec = apiRes.final_recommendation
+    finalConf = Math.round((apiRes.overall_confidence || 0.5) * 100)
+    stopLoss = apiRes.stop_loss || 0
+    entry = apiRes.entry_price || 0
+    target = apiRes.take_profit_1 || apiRes.take_profit_2 || 0
+  } else {
+    let totalWeight = 0
+    let weighted = 0
+    const mlScore = scores[ml.recommendation] || 0
+    weighted += mlScore * mlConf * 0.4
+    totalWeight += 0.4
+    if (grok) {
+      weighted += (scores[grok.recommendation] || 0) * (grok.confidence || 0.5) * 0.35
+      totalWeight += 0.35
+    }
+    if (news) {
+      const sentMap = { positive: 1, neutral: 0, negative: -1 }
+      const sentScore = sentMap[news.sentiment_summary?.overall] || 0
+      const sentConf = (news.sentiment_summary?.score || 50) / 100
+      weighted += sentScore * sentConf * 0.25
+      totalWeight += 0.25
+    }
+    const norm = totalWeight > 0 ? weighted / totalWeight : 0
+    finalRec = norm > 0.15 ? "BUY" : norm < -0.15 ? "SELL" : "HOLD"
+    finalConf = Math.round(Math.min(Math.abs(norm) * 100 + 50, 95))
+    const curRaw = ml.entry || ml.predictions?.[0]?.price || 0
+    stopLoss = ml.stop_loss || Math.round(curRaw * (finalRec === "BUY" ? 0.95 : 1.05))
+    entry = ml.entry || curRaw
+    target = ml.target || grok?.price_max_5d || grok?.price_range_5d?.max || Math.round(curRaw * (finalRec === "BUY" ? 1.06 : 0.94))
   }
-  if (news) {
-    const sentMap = { positive: 1, neutral: 0, negative: -1 }
-    const sentScore = sentMap[news.sentiment_summary?.overall] || 0
-    const sentConf = (news.sentiment_summary?.score || 50) / 100
-    weighted += sentScore * sentConf * 0.25
-    totalWeight += 0.25
-  }
-  const norm = totalWeight > 0 ? weighted / totalWeight : 0
-  const finalRec = norm > 0.15 ? "BUY" : norm < -0.15 ? "SELL" : "HOLD"
-  const finalConf = Math.round(Math.min(Math.abs(norm) * 100 + 50, 95))
-  const curRaw = ml.entry || ml.predictions?.[0]?.price || 0
-  const stopLoss = ml.stop_loss || Math.round(curRaw * (finalRec === "BUY" ? 0.95 : 1.05))
-  const entry = ml.entry || curRaw
-  const target = ml.target || grok?.price_max_5d || grok?.price_range_5d?.max || Math.round(curRaw * (finalRec === "BUY" ? 1.06 : 0.94))
   const dotClass = finalRec === "BUY" ? "buy" : finalRec === "SELL" ? "sell" : "hold"
   const color = recColor(finalRec)
   const colorStyle = { color }
@@ -771,6 +844,7 @@ function renderFinalReco(ml, grok, news) {
   const sources = [`XGBoost (${Math.round(mlConf * 100)}%)`]
   if (grok) sources.push(`LLM Langsung (${Math.round((grok.confidence || 0) * 100)}%)`)
   if (news) sources.push(`Sentimen Berita (${news.sentiment_summary?.score || "—"}/100)`)
+  if (apiRes) sources.push(`Analisis Sentimen & Makro LLM`)
 
   const sentOverall = news?.sentiment_summary?.overall
   const sentAction = news ? (sentOverall === "positive" ? "Positif" : sentOverall === "negative" ? "Negatif" : "Netral") : "—"
@@ -809,7 +883,7 @@ function renderFinalReco(ml, grok, news) {
       <div className="reco-desc">
         {"Rekomendasi akhir dihitung dari: "}
         <strong>{sources.join(" · ")}</strong>.
-        {grok?.summary ? <><br /><em style={summaryStyle}>{`“${grok.summary}”`}</em></> : null}
+        {apiRes?.summary ? <><br /><em style={summaryStyle}>{`“${apiRes.summary}”`}</em></> : (grok?.summary ? <><br /><em style={summaryStyle}>{`“${grok.summary}”`}</em></> : null)}
       </div>
       <div className="reco-levels">
         <div className="lvl-item"><div className="lvl-label">Stop Loss</div><div className="lvl-val" style={redV}>{fmt(stopLoss)}</div></div>

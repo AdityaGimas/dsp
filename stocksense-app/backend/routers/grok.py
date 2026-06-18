@@ -110,6 +110,7 @@ class FinalReq(BaseModel):
     groq_technical: Optional[dict] = None
     sentiment_summary: Optional[dict] = None
     groq_news: Optional[dict] = None
+    macro_data: Optional[dict] = None
     api_key: Optional[str] = None
 
 
@@ -122,9 +123,19 @@ async def final_recommendation(req: FinalReq):
     s    = req.sentiment_summary or {}
     gn   = req.groq_news      or {}
     ml_t = (ml.get("predictions") or [{}])[0].get("price","?")
+    macro = req.macro_data or {}
+    
+    macro_str = ""
+    if macro:
+        ihsg = macro.get("IHSG", {}).get("value", "?")
+        usd = macro.get("USDIDR", {}).get("value", "?")
+        bi = macro.get("BIRate", {}).get("value", "?")
+        macro_str = f"KONDISI MAKRO: IHSG {ihsg} | USD/IDR {usd} | BI Rate {bi}%"
+
     prompt = f"""Kamu chief analyst saham Indonesia. Gabungkan semua sinyal untuk {req.ticker}.
 
 HARGA: Rp {req.current_price:,.0f}
+{macro_str}
 SINYAL ML: {ml.get('recommendation','?')} conf {round(ml.get('confidence',0)*100)}% target {ml_t}
 SINYAL GROQ TEKNIKAL: {gt.get('recommendation','?')} conf {round(gt.get('confidence',0)*100)}% estimasi {gt.get('price_tomorrow','?')}
 SINYAL BERITA: {gn.get('news_recommendation','?')} conf {round(gn.get('news_confidence',0)*100)}% skor sentimen {s.get('score',50)}/100

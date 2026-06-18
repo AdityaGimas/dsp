@@ -31,6 +31,7 @@ export const api = {
   getNews: (t, perSource = 5) => getJSON(`/news/${t}?per_source=${perSource}`),
   predictSentiment: (ticker, articles) =>
     postJSON("/sentiment/predict", { ticker, articles }),
+  getMacro: () => getJSON("/macro"),
   // Groq calls now go through the FastAPI backend proxy (/api/grok/*),
   // so the API key is never exposed in the browser network tab to third parties.
   groqTechnical: (payload) => postJSON("/grok/technical", payload),

@@ -1,4 +1,6 @@
+import { useEffect, useState, useMemo } from "react"
 import { Line } from "react-chartjs-2"
+import { api } from "../api/client.js"
 import TickerSearchBar from "../components/TickerSearchBar.jsx"
 
 const St = {
@@ -75,6 +77,30 @@ const CORR = {
 }
 
 export default function MakroEkonomi() {
+  const [macroData, setMacroData] = useState(null)
+
+  useEffect(() => {
+    api.getMacro().then(d => setMacroData(d.data)).catch(console.error)
+  }, [])
+
+  const dynamicHero = useMemo(() => {
+    if (!macroData) return HERO // fallback
+    const fmtPct = (val) => val > 0 ? `+${val.toFixed(2)}%` : `${val.toFixed(2)}%`
+    const usd = macroData.USDIDR
+    const ihsg = macroData.IHSG
+    const bi = macroData.BIRate
+    const infl = macroData.Inflation
+    const gdp = macroData.GDP
+    
+    return [
+      { cls: "mh-up", label: "PDB (YoY)", val: gdp ? `${gdp.value}%` : "5.03%", chg: gdp ? `${gdp.change_pct} QoQ` : "+0.06 QoQ", chgCls: "chg-pos", desc: "Pertumbuhan ekonomi" },
+      { cls: "mh-down", label: "Inflasi (YoY)", val: infl ? `${infl.value}%` : "2.84%", chg: infl ? `${infl.change_pct} MoM` : "-0.13 MoM", chgCls: "chg-pos", desc: "Dalam target BI" },
+      { cls: "mh-neu", label: "BI Rate", val: bi ? `${bi.value.toFixed(2)}%` : "6.00%", chg: bi ? bi.desc : "Tetap", chgCls: "", desc: "Suku bunga acuan" },
+      { cls: "mh-blue", label: "USD/IDR", val: usd ? Number(usd.value).toLocaleString("id-ID") : "16.245", chg: usd ? fmtPct(usd.change_pct) : "+0.4%", chgCls: usd && usd.change_pct > 0 ? "chg-neg" : "chg-pos", desc: "Kurs pasar spot" },
+      { cls: "mh-purple", label: "IHSG", val: ihsg ? Number(ihsg.value).toLocaleString("id-ID") : "7.200", chg: ihsg ? fmtPct(ihsg.change_pct) : "+0.5%", chgCls: ihsg && ihsg.change_pct >= 0 ? "chg-pos" : "chg-neg", desc: "Indeks Harga Saham" },
+    ]
+  }, [macroData])
+
   const gdpData = {
     labels: GDP_MONTHS,
     datasets: [
@@ -110,7 +136,7 @@ export default function MakroEkonomi() {
       <TickerSearchBar label="Makro Ekonomi" />
       <div className="content">
         <div className="macro-hero">
-          {HERO.map((h, i) => (
+          {dynamicHero.map((h, i) => (
             <div className={"mh-card " + h.cls} key={i}>
               <div className="mh-label">{h.label}</div>
               <div className="mh-val">{h.val}</div>
