@@ -9,3 +9,9 @@ ta
 feedparser
 beautifulsoup4
 lxml
+duckduckgo_search
+trafilatura
+newspaper3k
+selenium
+webdriver-manager
+huggingface_hub

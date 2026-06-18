@@ -28,7 +28,7 @@ export const api = {
   getHistory: (t, period) => getJSON(`/stocks/${t}/history?period=${period}`),
   getIndicators: (t) => getJSON(`/stocks/${t}/indicators`),
   getPrediction: (t) => getJSON(`/prediction/${t}`),
-  getNews: (t, perSource = 5) => getJSON(`/news/${t}?per_source=${perSource}`),
+  getNews: (t, perSource = 50) => getJSON(`/news/${t}?per_source=${perSource}`),
   predictSentiment: (ticker, articles) =>
     postJSON("/sentiment/predict", { ticker, articles }),
   getMacro: () => getJSON("/macro"),
