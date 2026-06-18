@@ -2,7 +2,7 @@
 :root{
   --bg-app:#0d0f14;--bg-sidebar:#111318;--bg-card:#161920;--bg-hover:#1c2028;--bg-input:#1a1d26;
   --border:rgba(255,255,255,0.07);--border-light:rgba(255,255,255,0.04);
-  --text-primary:#e8eaf0;--text-secondary:#8a8f9e;--text-muted:#505568;
+  --text-primary:#e8eaf0;--text-secondary:#b0b7c6;--text-muted:#7e8494;
   --blue:#4f9cf9;--green:#2dd4a0;--red:#f55e5e;--amber:#f5b731;--purple:#a78bfa;--teal:#2dd4bf;
   --font-body:'DM Sans',sans-serif;--font-mono:'Space Mono',monospace;
   --r-sm:6px;--r-md:10px;--r-lg:14px;--sidebar-w:210px;
@@ -40,7 +40,7 @@ body{font-family:var(--font-body);background:var(--bg-app);color:var(--text-prim
 /* SIDEBAR */
 .sidebar{width:var(--sidebar-w);background:var(--bg-sidebar);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:16px 10px;gap:20px;flex-shrink:0;overflow-y:auto}
 .sec-label{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);padding:0 8px;margin-bottom:2px}
-.nav-item{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:var(--r-sm);color:var(--text-secondary);cursor:pointer;font-size:13px;transition:all .15s}
+.nav-item{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:var(--r-sm);color:var(--text-secondary);cursor:pointer;font-size:13px;transition:all .15s;text-decoration:none}
 .nav-item:hover{background:rgba(255,255,255,0.04);color:var(--text-primary)}
 .nav-item.active{background:rgba(79,156,249,0.1);color:var(--blue)}
 .nav-icon{font-size:14px;width:16px;text-align:center}
