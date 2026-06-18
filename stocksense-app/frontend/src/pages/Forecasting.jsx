@@ -117,7 +117,7 @@ export default function Forecasting() {
       labels,
       datasets: [
         { label: "Historis", data: [...closes, ...pad], borderColor: "#4f9cf9", borderWidth: 1.8, pointRadius: 0, tension: 0.3 },
-        { label: "Ensemble", data: [...connector, ...preds.map((p) => p.price)], borderColor: "#2dd4a0", borderWidth: 1.8, borderDash: [5, 3], pointRadius: 2, tension: 0.3 },
+        { label: "XGBoost", data: [...connector, ...preds.map((p) => p.price)], borderColor: "#2dd4a0", borderWidth: 1.8, borderDash: [5, 3], pointRadius: 2, tension: 0.3 },
       ],
     }
   }, [hist, pred])
@@ -137,7 +137,7 @@ export default function Forecasting() {
       <TickerSearchBar label="Forecasting">
         <div style={St.modelWrap}>
           <span style={St.modelLbl}>Model:</span>
-          <span style={St.modelPill}>Ensemble (RF + LSTM + GB)</span>
+          <span style={St.modelPill}>XGBoost</span>
         </div>
         <button className={"fetch-news-btn " + (busy ? "loading" : "")} disabled={busy}>
           <span className="spin-sm" />
@@ -180,7 +180,7 @@ export default function Forecasting() {
               </div>
               <div className="model-toggle">
                 <div className="mtog-item"><div className="mtog-dot" style={St.dotBlue} />Historis</div>
-                <div className="mtog-item"><div className="mtog-dot" style={St.dotGreen} />Ensemble</div>
+                <div className="mtog-item"><div className="mtog-dot" style={St.dotGreen} />XGBoost</div>
               </div>
             </div>
           </div>
@@ -228,7 +228,7 @@ export default function Forecasting() {
                   <text x="48" y="44" textAnchor="middle" fill="var(--text-primary)" fontFamily="'Space Mono',monospace" fontSize="14" fontWeight="700">{Math.round(acc) + "%"}</text>
                   <text x="48" y="57" textAnchor="middle" fill="var(--text-muted)" fontFamily="'DM Sans',sans-serif" fontSize="8">Akurasi</text>
                 </svg>
-                <div className="ring-label">Ensemble Confidence</div>
+                <div className="ring-label">XGBoost Confidence</div>
               </div>
               <div style={St.ringBox}>
                 <div className="feat-row"><div className="feat-name">LSTM</div><div className="feat-bar-track"><div className="feat-bar" style={St.featPurple} /></div><div className="feat-pct" style={St.pctPurple}>82%</div></div>
@@ -299,7 +299,7 @@ export default function Forecasting() {
                 { badge: "mc-badge-rf", name: "Random Forest", price: "Rp 9.580", col: "var(--blue)", acc: "79.4%", mae: "124.3", rmse: "187.1" },
                 { badge: "mc-badge-lstm", name: "LSTM Neural Net", price: "Rp 9.720", col: "var(--purple)", acc: "82.1%", mae: "98.7", rmse: "152.4" },
                 { badge: "mc-badge-gb", name: "Gradient Boosting", price: "Rp 9.610", col: "var(--green)", acc: "85.2%", mae: "112.0", rmse: "164.8" },
-                { badge: "mc-badge-ens", name: "✦ Ensemble", price: "Rp 9.650", col: "var(--amber)", acc: "87.3%", mae: "89.4", rmse: "134.1", amber: true },
+                { badge: "mc-badge-ens", name: "✦ XGBoost", price: "Rp 9.650", col: "var(--amber)", acc: "87.3%", mae: "89.4", rmse: "134.1", amber: true },
               ].map((m, i) => {
                 const priceStyle = { color: m.col }
                 return (

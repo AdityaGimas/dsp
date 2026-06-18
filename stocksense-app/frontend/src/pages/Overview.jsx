@@ -256,6 +256,20 @@ export default function Overview() {
     }
   }
 
+  useEffect(() => {
+    if (indicators && mlPred && !groqTech && !groqTechBusy && !groqTechErr && !groqTechTs) {
+      runGroqTechnical()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indicators, mlPred, groqTech, groqTechBusy, groqTechErr, groqTechTs])
+
+  useEffect(() => {
+    if (!news && !newsBusy && !newsErr && !newsTs) {
+      fetchNews()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [news, newsBusy, newsErr, newsTs, currentTicker])
+
   const chartData = useMemo(() => {
     const histLabels = hist.map((r) => r.date)
     const closes = hist.map((r) => r.close)
@@ -300,7 +314,7 @@ export default function Overview() {
       const mlConnector = Array(histLen).fill(null)
       mlConnector[histLen - 1] = lastClose
       datasets.push({
-        label: "ML Prediksi",
+        label: "XGBoost Prediksi",
         data: [...mlConnector, ...mlPred.predictions.map((p) => p.price)],
         borderColor: "#4f9cf9",
         borderWidth: 2,
@@ -315,7 +329,7 @@ export default function Overview() {
         gd[histLen - 1] = lastClose
         gd[histLen] = groqTech.price_tomorrow
         datasets.push({
-          label: "Groq Prediksi",
+          label: "LLM Prediksi",
           data: gd,
           borderColor: "#a78bfa",
           borderWidth: 2,
@@ -426,14 +440,14 @@ export default function Overview() {
 
         <div className="kpi-grid" style={S.kpiGrid}>
           <div className="kpi-card kpi-c-blue">
-            <div className="kpi-label">Akurasi Model ML</div>
+            <div className="kpi-label">Akurasi XGBoost</div>
             <div className="kpi-val" style={S.blueTxt}>
               {mlPred?.model_accuracy ? mlPred.model_accuracy.toFixed(1) + "%" : "—"}
             </div>
             <div className="kpi-sub">Model: {mlPred?.model_name || "—"}</div>
           </div>
           <div className="kpi-card kpi-c-blue">
-            <div className="kpi-label">Prediksi ML Besok</div>
+            <div className="kpi-label">XGBoost Besok</div>
             <div className="kpi-val" style={S.blueTxt}>{mlFirst ? fmt(mlFirst.price) : "—"}</div>
             <div className="kpi-sub">
               {mlFirst ? (
@@ -447,14 +461,14 @@ export default function Overview() {
             </div>
           </div>
           <div className="kpi-card kpi-c-purple">
-            <div className="kpi-label">Groq Teknikal</div>
+            <div className="kpi-label">LLM Langsung</div>
             <div className="kpi-val" style={grokKpiStyle}>
               {groqTech ? recLabel(groqTech.recommendation) : groqTechBusy ? "..." : "—"}
             </div>
             <div className="kpi-sub">
               {groqTech
                 ? "Confidence: " + Math.round((groqTech.confidence || 0) * 100) + "%"
-                : groqTechErr || "Klik ▶ Analisis Groq"}
+                : groqTechErr || "Menganalisis..."}
             </div>
           </div>
           <div className="kpi-card kpi-c-teal">
@@ -492,8 +506,8 @@ export default function Overview() {
               </div>
               <div className="chart-legend">
                 <span className="leg-item"><span className="leg-line" style={S.legSolidBlue} />Historis</span>
-                <span className="leg-item"><span className="leg-line" style={S.legDashBlue} />ML Prediksi</span>
-                <span className="leg-item"><span className="leg-line" style={S.legDashPurple} />Groq Prediksi</span>
+                <span className="leg-item"><span className="leg-line" style={S.legDashBlue} />XGBoost Prediksi</span>
+                <span className="leg-item"><span className="leg-line" style={S.legDashPurple} />LLM Prediksi</span>
                 <span className="leg-item"><span className="leg-line" style={S.legSolidPurple} />MA 20</span>
               </div>
               <div className="card-body">
@@ -528,7 +542,7 @@ export default function Overview() {
                     disabled={groqTechBusy}
                   >
                     <span className="spin-sm" style={S.spinPurple} />
-                    <span className="btn-txt">{groqTechBusy ? "Menganalisis..." : "▶ Analisis Groq"}</span>
+                    <span className="btn-txt">{groqTechBusy ? "Menganalisis..." : "▶ Ulangi LLM"}</span>
                   </button>
                   <span className="analysis-time">{groqTechTs ? "⏱ " + fmtAge(groqTechTs) : ""}</span>
                 </div>
@@ -628,7 +642,7 @@ function renderDualPred(ml, grok, groqKey, busy) {
 
   const mlBody = ml ? (
     <>
-      <div className="pred-src-badge badge-ml">⚡ Model ML (FastAPI)</div>
+      <div className="pred-src-badge badge-ml">⚡ Model XGBoost</div>
       <div className="pred-src-price">{fmt(ml.predictions?.[0]?.price)}</div>
       <span className={"pred-src-chg " + (ml.predictions?.[0]?.change_pct >= 0 ? "chg-pos-bg" : "chg-neg-bg")}>
         {(ml.predictions?.[0]?.change_pct >= 0 ? "+" : "") + (ml.predictions?.[0]?.change_pct?.toFixed(2) || 0) + "%"}
@@ -641,14 +655,14 @@ function renderDualPred(ml, grok, groqKey, busy) {
     </>
   ) : (
     <>
-      <div className="pred-src-badge badge-ml">⚡ Model ML (FastAPI)</div>
+      <div className="pred-src-badge badge-ml">⚡ Model XGBoost</div>
       <div className="loading-overlay" style={pad10}><span className="spinner" /></div>
     </>
   )
 
   const grokBody = grok ? (
     <>
-      <div className="pred-src-badge badge-grok">✦ Groq LLM Teknikal</div>
+      <div className="pred-src-badge badge-grok">✦ Prediksi LLM Langsung</div>
       <div className="pred-src-price">{fmt(grok.price_tomorrow)}</div>
       <span className="pred-src-chg" style={rangeStyle}>
         {"Range: " + fmt(grok.price_min_5d || grok.price_range_5d?.min) + "–" + fmt(grok.price_max_5d || grok.price_range_5d?.max)}
@@ -661,8 +675,8 @@ function renderDualPred(ml, grok, groqKey, busy) {
     </>
   ) : (
     <>
-      <div className="pred-src-badge badge-grok">✦ Groq LLM Teknikal</div>
-      <div style={emptyStyle}>{busy ? "Menganalisis..." : groqKey ? "Klik ▶ Analisis Groq" : "Set Groq API Key untuk mengaktifkan"}</div>
+      <div className="pred-src-badge badge-grok">✦ Prediksi LLM Langsung</div>
+      <div style={emptyStyle}>{busy ? "Menganalisis..." : groqKey ? "Menunggu analisis..." : "Set Groq API Key untuk mengaktifkan"}</div>
     </>
   )
 
@@ -683,7 +697,7 @@ function renderAgree(ml, grok) {
       <span style={txtStyle}>
         {agree
           ? `Kedua sumber sepakat: ${recLabel(ml.recommendation)} — sinyal lebih kuat`
-          : `Sumber berbeda pendapat: ML → ${recLabel(ml.recommendation)}, Groq → ${recLabel(grok.recommendation)} — pertimbangkan dengan hati-hati`}
+          : `Sumber berbeda pendapat: XGBoost → ${recLabel(ml.recommendation)}, LLM → ${recLabel(grok.recommendation)} — pertimbangkan dengan hati-hati`}
       </span>
     </div>
   )
@@ -717,8 +731,8 @@ function renderPredGrid(ml, grok, info) {
         <div style={gap} />
         <div className="pred-price">{fmt(p.price)}</div>
         <div className="pred-chg" style={chgStyle}>{(up ? "+" : "") + p.change_pct.toFixed(2) + "%"}</div>
-        <div className="pred-conf">{"ML " + Math.round(p.confidence * 100) + "%"}</div>
-        {i === 0 && grok ? <div className="pred-grok-price">{"G: " + fmt(grok.price_tomorrow)}</div> : null}
+        <div className="pred-conf">{"XGB " + Math.round(p.confidence * 100) + "%"}</div>
+        {i === 0 && grok ? <div className="pred-grok-price">{"LLM: " + fmt(grok.price_tomorrow)}</div> : null}
       </div>,
     )
   })
@@ -768,8 +782,8 @@ function renderFinalReco(ml, grok, news) {
   const mlActionStyle = { color: recColor(ml.recommendation) }
   const grokActionStyle = { color: grok ? recColor(grok.recommendation) : "var(--text-muted)" }
 
-  const sources = [`ML (${Math.round(mlConf * 100)}%)`]
-  if (grok) sources.push(`Groq Teknikal (${Math.round((grok.confidence || 0) * 100)}%)`)
+  const sources = [`XGBoost (${Math.round(mlConf * 100)}%)`]
+  if (grok) sources.push(`LLM Langsung (${Math.round((grok.confidence || 0) * 100)}%)`)
   if (news) sources.push(`Sentimen Berita (${news.sentiment_summary?.score || "—"}/100)`)
 
   const sentOverall = news?.sentiment_summary?.overall
@@ -782,14 +796,14 @@ function renderFinalReco(ml, grok, news) {
     <>
       <div className="reco-sources">
         <div className="reco-src-card">
-          <div className="reco-src-label">⚡ Model ML</div>
+          <div className="reco-src-label">⚡ Model XGBoost</div>
           <div className="reco-src-action" style={mlActionStyle}>{recLabel(ml.recommendation || "HOLD")}</div>
           <div className="reco-src-conf">{"Conf: " + Math.round((ml.confidence || 0) * 100) + "%"}</div>
         </div>
         <div className="reco-src-card">
-          <div className="reco-src-label">✦ Groq Teknikal</div>
+          <div className="reco-src-label">✦ LLM Langsung</div>
           <div className="reco-src-action" style={grokActionStyle}>{grok ? recLabel(grok.recommendation) : "—"}</div>
-          <div className="reco-src-conf">{grok ? "Conf: " + Math.round((grok.confidence || 0) * 100) + "%" : "Belum dianalisis"}</div>
+          <div className="reco-src-conf">{grok ? "Conf: " + Math.round((grok.confidence || 0) * 100) + "%" : "Menganalisis..."}</div>
         </div>
         <div className="reco-src-card">
           <div className="reco-src-label">📰 Sentimen</div>

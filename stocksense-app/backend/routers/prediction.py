@@ -65,7 +65,7 @@ def get_prediction(ticker: str):
 
     return PredictionResponse(
         ticker=ticker,
-        model_name="Dummy Model",          # ganti: "LSTM", "ARIMA", dst
+        model_name="XGBoost",              # ganti: "LSTM", "ARIMA", dst
         model_accuracy=67.0,                # ganti dengan akurasi modelmu
         predictions=dummy_predictions,
         recommendation="HOLD",             # ganti dengan output modelmu
