@@ -61,44 +61,6 @@ const S = {
   newsDefault: { color: "var(--text-muted)", fontSize: 12, padding: "12px 0", textAlign: "center" },
 }
 
-const MOCK_IND = {
-  rsi: { value: 52.4, signal: "Netral" },
-  macd: { value: 12.5, signal: "Bullish" },
-  moving_average: { ma20: 5050, ma50: 4900, golden_cross: true, signal: "Beli" },
-  overall: { signal: "Netral", buy_count: 2, total: 4 },
-}
-
-function mockHistory(period) {
-  const days = { "1mo": 30, "3mo": 90, "6mo": 180, "1y": 365 }[period] || 180
-  const data = []
-  let p = 5000
-  const today = new Date()
-  for (let i = days; i >= 0; i--) {
-    const d = new Date()
-    d.setDate(today.getDate() - i)
-    if (d.getDay() === 0 || d.getDay() === 6) continue
-    p += (Math.random() - 0.47) * 120
-    data.push({ date: d.toISOString().split("T")[0], close: Math.round(p) })
-  }
-  return data
-}
-
-function mockPrediction(ticker) {
-  const preds = []
-  let base = 5000
-  const today = new Date()
-  const cur = new Date(today)
-  let added = 0
-  while (added < 6) {
-    cur.setDate(cur.getDate() + 1)
-    if (cur.getDay() === 0 || cur.getDay() === 6) continue
-    const chg = (Math.random() - 0.43) * 0.015
-    base = base * (1 + chg)
-    preds.push({ date: cur.toISOString().split("T")[0], price: Math.round(base), change_pct: chg * 100, confidence: 0.88 - added * 0.05 })
-    added++
-  }
-  return { ticker, model_name: "Tren", model_accuracy: 72.5, predictions: preds, recommendation: "BUY", confidence: 0.8, stop_loss: 4750, entry: 4950, target: 5350 }
-}
 
 export default function Overview() {
   const { currentTicker } = useApp()
@@ -155,8 +117,8 @@ export default function Overview() {
     setIndicators(null)
     api
       .getIndicators(t)
-      .then((d) => alive && setIndicators(d && d.rsi ? d : MOCK_IND))
-      .catch(() => alive && setIndicators(MOCK_IND))
+      .then((d) => alive && setIndicators(d && d.rsi ? d : null))
+      .catch(() => alive && setIndicators(null))
 
     setMlPred(null)
     api
@@ -166,7 +128,10 @@ export default function Overview() {
         setMlPred(d)
         saveCache(t, "ml", d)
       })
-      .catch(() => alive && setMlPred(mockPrediction(t)))
+      .catch((e) => {
+        console.error("Gagal mendapatkan prediksi ML:", e)
+        if (alive) setMlPred(null)
+      })
 
     return () => {
       alive = false
@@ -181,8 +146,8 @@ export default function Overview() {
     let alive = true
     api
       .getHistory(currentTicker, period)
-      .then((d) => alive && setHist(d.data && d.data.length ? d.data : mockHistory(period)))
-      .catch(() => alive && setHist(mockHistory(period)))
+      .then((d) => alive && setHist(d.data && d.data.length ? d.data : []))
+      .catch(() => alive && setHist([]))
     return () => {
       alive = false
     }
@@ -458,11 +423,32 @@ export default function Overview() {
         </div>
         
         {macroData && (
-          <div style={{display: 'flex', gap: 20, background: 'rgba(255,255,255,0.03)', padding: '8px 16px', borderRadius: 8, marginTop: 16, marginBottom: 16, fontSize: 12, border: '1px solid rgba(255,255,255,0.05)'}}>
-            <div style={{color: 'var(--text-muted)'}}>🌍 Kondisi Makro:</div>
-            <div><span style={{color: 'var(--text-muted)'}}>IHSG:</span> <strong style={{color: macroData.IHSG?.change_pct >= 0 ? 'var(--green)' : 'var(--red)'}}>{macroData.IHSG?.value?.toLocaleString('id-ID')}</strong></div>
-            <div><span style={{color: 'var(--text-muted)'}}>USD/IDR:</span> <strong>{macroData.USDIDR?.value?.toLocaleString('id-ID')}</strong></div>
-            <div><span style={{color: 'var(--text-muted)'}}>BI Rate:</span> <strong>{macroData.BIRate?.value}%</strong></div>
+          <div style={{
+            display: 'flex', flexWrap: 'wrap', gap: 24, 
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.01) 100%)', 
+            padding: '12px 20px', borderRadius: 12, 
+            marginTop: 16, marginBottom: 16, 
+            fontSize: 13, border: '1px solid rgba(255,255,255,0.08)',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+            backdropFilter: 'blur(10px)',
+            alignItems: 'center'
+          }}>
+            <div style={{color: 'var(--purple)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6}}>
+              <span style={{fontSize: 16}}>🌍</span> Kondisi Makro Terkini
+            </div>
+            <div style={{width: 1, height: 24, background: 'rgba(255,255,255,0.1)'}}></div>
+            <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
+              <span style={{color: 'var(--text-muted)'}}>IHSG:</span> 
+              <strong style={{color: macroData.IHSG?.change_pct >= 0 ? 'var(--green)' : 'var(--red)', letterSpacing: '0.5px'}}>{macroData.IHSG?.value?.toLocaleString('id-ID')}</strong>
+            </div>
+            <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
+              <span style={{color: 'var(--text-muted)'}}>USD/IDR:</span> 
+              <strong style={{color: 'var(--text-bright)', letterSpacing: '0.5px'}}>{macroData.USDIDR?.value?.toLocaleString('id-ID')}</strong>
+            </div>
+            <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
+              <span style={{color: 'var(--text-muted)'}}>BI Rate:</span> 
+              <strong style={{color: 'var(--text-bright)', letterSpacing: '0.5px'}}>{macroData.BIRate?.value}%</strong>
+            </div>
           </div>
         )}
 
