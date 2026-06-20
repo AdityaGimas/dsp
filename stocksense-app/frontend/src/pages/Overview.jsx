@@ -61,6 +61,18 @@ const S = {
   newsDefault: { color: "var(--text-muted)", fontSize: 12, padding: "12px 0", textAlign: "center" },
 }
 
+const SENT_META = {
+  positive: { cls: "esb-pos", label: "Positif", short: "POS" },
+  neutral:  { cls: "esb-neu", label: "Netral",  short: "NTR" },
+  negative: { cls: "esb-neg", label: "Negatif", short: "NEG" },
+}
+
+const CAT_LABELS = {
+  market:     "📈 Pasar",
+  macro:      "🏦 Makro Ekonomi",
+  geopolitics:"🌍 Geopolitik",
+}
+
 
 export default function Overview() {
   const { currentTicker } = useApp()
@@ -73,6 +85,7 @@ export default function Overview() {
   const [groqTech, setGroqTech] = useState(null)
   const [news, setNews] = useState(null)
   const [aiSummary, setAiSummary] = useState("")
+  const [sentModel, setSentModel] = useState("compare")
   const [macroData, setMacroData] = useState(null)
   const [finalReco, setFinalReco] = useState(null)
   const [finalRecoBusy, setFinalRecoBusy] = useState(false)
@@ -182,18 +195,33 @@ export default function Overview() {
     setNewsBusy(true)
     setNewsErr("")
     try {
-      const newsData = await api.getNews(currentTicker, 5)
+      // 1. Ambil berita + konten dari backend (50 artikel agar konsisten dengan halaman sentimen)
+      const newsData = await api.getNews(currentTicker, 50)
       if (!newsData.articles || !newsData.articles.length)
         throw new Error("Tidak ada berita ditemukan. Coba lagi nanti.")
+
+      // 2. Kirim ke sentiment dengan category dari news pipeline
       const sentData = await api.predictSentiment(
         currentTicker,
-        newsData.articles.map((a) => ({ title: a.title, content: a.content || "" })),
+        newsData.articles.map((a) => ({
+          title:    a.title,
+          content:  a.content || "",
+          category: a.category || "market",
+        })),
       )
+
+      // 3. Merge hasil sentimen ke artikel
       const merged = newsData.articles.map((a, i) => ({
         ...a,
-        sentiment: sentData.results[i]?.sentiment || "neutral",
-        sentiment_label: sentData.results[i]?.label || "Netral",
+        category:       sentData.results[i]?.category    || a.category || "market",
+        sentiment:      sentData.results[i]?.sentiment   || "neutral",
+        sentiment_label:sentData.results[i]?.label       || "Netral",
+        score:          sentData.results[i]?.score       ?? 0,
+        llm_sentiment:  sentData.results[i]?.llm_sentiment || "neutral",
+        llm_label:      sentData.results[i]?.llm_label   || "Netral",
+        llm_score:      sentData.results[i]?.llm_score   ?? 0,
       }))
+
       const ln = {
         total_articles: sentData.total_articles,
         articles: merged,
@@ -415,14 +443,48 @@ export default function Overview() {
 
   // ── derived values + dynamic styles (named, single-brace refs) ───
   const sm = news?.sentiment_summary || {}
+
+  const llmSummary = useMemo(() => {
+    if (!news || !news.articles || !news.articles.length) return {
+      positive: 0, neutral: 0, negative: 0,
+      positive_pct: 0, neutral_pct: 0, negative_pct: 0,
+      score: 0, overall: "neutral", overall_label: "Netral"
+    }
+    const articles = news.articles
+    let pos = 0, neu = 0, neg = 0
+    articles.forEach((a) => {
+      if (a.llm_sentiment === "positive") pos++
+      else if (a.llm_sentiment === "negative") neg++
+      else neu++
+    })
+    const total = articles.length
+    const pos_pct = Math.round(pos / total * 100)
+    const neu_pct = Math.round(neu / total * 100)
+    const neg_pct = Math.round(neg / total * 100)
+    const score = Math.round((pos * 100 + neu * 50) / total)
+    const overall = pos_pct > 50 ? "positive" : (neg_pct > 50 ? "negative" : "neutral")
+    const overall_label = overall === "positive" ? "Positif" : (overall === "negative" ? "Negatif" : "Netral")
+    return {
+      positive: pos,
+      neutral: neu,
+      negative: neg,
+      positive_pct: pos_pct,
+      neutral_pct: neu_pct,
+      negative_pct: neg_pct,
+      score,
+      overall,
+      overall_label,
+    }
+  }, [news])
+
   const ov = indicators?.overall || {}
   const mlFirst = mlPred?.predictions?.[0]
   const pos = info ? info.change_pct >= 0 : true
   const predSubColor = mlFirst && mlFirst.change_pct >= 0 ? S.green : S.red
-  const sentColor =
-    sm.overall === "positive" ? S.green : sm.overall === "negative" ? S.red : S.amberTxt
+  const sentColor1 = sm.overall === "positive" ? S.green : sm.overall === "negative" ? S.red : S.amberTxt
+  const sentColor2 = llmSummary.overall === "positive" ? S.green : llmSummary.overall === "negative" ? S.red : S.amberTxt
+  const sentKpiStyle = news ? (sentModel === "llm" ? sentColor2 : sentColor1) : S.tealTxt
   const grokKpiStyle = groqTech ? { color: recColor(groqTech.recommendation) } : S.purpleTxt
-  const sentKpiStyle = news ? sentColor : S.tealTxt
   const signalStyle = ov.signal ? { color: indColor(ov.signal) } : S.greenTxt
   const periods = [
     { id: "1mo", lbl: "1B" },
@@ -513,11 +575,35 @@ export default function Overview() {
           </div>
           <div className="kpi-card kpi-c-teal">
             <div className="kpi-label">Sentimen Berita</div>
-            <div className="kpi-val" style={sentKpiStyle}>
-              {news ? (sm.score || "—") + "/100" : "—"}
+            <div className="kpi-val">
+              {news ? (
+                sentModel === "compare" ? (
+                  <span style={{ fontSize: 13, display: "flex", gap: 6, justifyContent: "center", alignItems: "center" }}>
+                    <span style={{ color: "var(--text-muted)", fontSize: 10 }}>HF:</span>
+                    <span style={sentColor1}>{sm.score || "—"}</span>
+                    <span style={{ color: "var(--border)" }}>|</span>
+                    <span style={{ color: "var(--text-muted)", fontSize: 10 }}>LLM:</span>
+                    <span style={sentColor2}>{llmSummary.score || "—"}</span>
+                  </span>
+                ) : (
+                  <span style={sentKpiStyle}>
+                    {((sentModel === "llm" ? llmSummary.score : sm.score) || "—") + "/100"}
+                  </span>
+                )
+              ) : "—"}
             </div>
             <div className="kpi-sub">
-              {news ? `${sm.positive || 0} pos / ${sm.neutral || 0} netral / ${sm.negative || 0} neg` : 'Klik "Ambil Berita"'}
+              {news ? (
+                sentModel === "compare" ? (
+                  "Bandingkan Finetune & LLM"
+                ) : (
+                  sentModel === "llm" ? (
+                    `${llmSummary.positive} pos / ${llmSummary.neutral} netral / ${llmSummary.negative} neg`
+                  ) : (
+                    `${sm.positive || 0} pos / ${sm.neutral || 0} netral / ${sm.negative || 0} neg`
+                  )
+                )
+              ) : 'Klik "Ambil Berita"'}
             </div>
           </div>
           <div className="kpi-card kpi-c-amber">
@@ -637,7 +723,7 @@ export default function Overview() {
                   </button>
                 </div>
               </div>
-              <div className="card-body">{renderSentiment(news, newsErr, newsBusy, aiSummary)}</div>
+              <div className="card-body">{renderSentiment(news, newsErr, newsBusy, aiSummary, sentModel, setSentModel, llmSummary)}</div>
             </div>
 
             <div className="card">
@@ -974,7 +1060,7 @@ function renderFinalReco(ml, grok, news, apiRes, busy) {
   )
 }
 
-function renderSentiment(news, err, busy, aiSummary) {
+function renderSentiment(news, err, busy, aiSummary, sentModel, setSentModel, llmSummary) {
   if (busy && !news) {
     return (
       <div className="loading-overlay">
@@ -992,43 +1078,148 @@ function renderSentiment(news, err, busy, aiSummary) {
       </div>
     )
   }
+
   const s = news.sentiment_summary || {}
-  const overallColor = s.overall === "positive" ? "var(--green)" : s.overall === "negative" ? "var(--red)" : "var(--amber)"
-  const overallLabel = s.overall === "positive" ? "Positif" : s.overall === "negative" ? "Negatif" : "Netral"
-  const circleBg = s.overall === "positive" ? "rgba(45,212,160,0.1)" : s.overall === "negative" ? "rgba(245,94,94,0.1)" : "rgba(245,183,49,0.1)"
-  const circleStyle = { background: circleBg, borderColor: overallColor + "40" }
-  const numStyle = { color: overallColor }
-  const headStyle = { color: overallColor }
-  const posFill = { width: (s.positive_pct || 0) + "%", background: "var(--green)" }
-  const neuFill = { width: (s.neutral_pct || 0) + "%", background: "var(--amber)" }
-  const negFill = { width: (s.negative_pct || 0) + "%", background: "var(--red)" }
+
+  // ─── Render model selector ───
+  const renderSelector = () => (
+    <div className="tab-group" style={{ marginBottom: 16, display: "flex", justifyContent: "stretch" }}>
+      <span
+        style={{ flex: 1, textAlign: "center", fontSize: 10, padding: "4px 0" }}
+        className={`tab ${sentModel === "compare" ? "active-tab" : ""}`}
+        onClick={() => setSentModel("compare")}
+      >Bandingkan</span>
+      <span
+        style={{ flex: 1, textAlign: "center", fontSize: 10, padding: "4px 0" }}
+        className={`tab ${sentModel === "finetune" ? "active-tab" : ""}`}
+        onClick={() => setSentModel("finetune")}
+      >Finetune (HF)</span>
+      <span
+        style={{ flex: 1, textAlign: "center", fontSize: 10, padding: "4px 0" }}
+        className={`tab ${sentModel === "llm" ? "active-tab" : ""}`}
+        onClick={() => setSentModel("llm")}
+      >LLM (Groq)</span>
+    </div>
+  )
+
+  // ─── Render single model gauges & progress bars ───
+  const renderSingleModel = (data, title) => {
+    const overallColor = data.overall === "positive" ? "var(--green)" : data.overall === "negative" ? "var(--red)" : "var(--amber)"
+    const overallLabel = data.overall === "positive" ? "Positif" : data.overall === "negative" ? "Negatif" : "Netral"
+    const circleBg = data.overall === "positive" ? "rgba(45,212,160,0.1)" : data.overall === "negative" ? "rgba(245,94,94,0.1)" : "rgba(245,183,49,0.1)"
+    const circleStyle = { background: circleBg, borderColor: overallColor + "40" }
+    const numStyle = { color: overallColor }
+    const headStyle = { color: overallColor }
+    const posFill = { width: (data.positive_pct || 0) + "%", background: "var(--green)" }
+    const neuFill = { width: (data.neutral_pct || 0) + "%", background: "var(--amber)" }
+    const negFill = { width: (data.negative_pct || 0) + "%", background: "var(--red)" }
+
+    return (
+      <>
+        <div className="sent-top">
+          <div className="sent-circle" style={circleStyle}>
+            <span className="sent-num" style={numStyle}>{data.score || "—"}</span>
+          </div>
+          <div className="sent-info">
+            <h4 style={headStyle}>{overallLabel}</h4>
+            <p>{(news.total_articles || 0) + ` artikel dianalisis · ${title}`}</p>
+          </div>
+        </div>
+        <div className="sbar-row">
+          <span className="sbar-lbl">Positif</span>
+          <div className="sbar-track"><div className="sbar-fill" style={posFill} /></div>
+          <span className="sbar-pct">{(data.positive_pct || 0) + "%"}</span>
+        </div>
+        <div className="sbar-row">
+          <span className="sbar-lbl">Netral</span>
+          <div className="sbar-track"><div className="sbar-fill" style={neuFill} /></div>
+          <span className="sbar-pct">{(data.neutral_pct || 0) + "%"}</span>
+        </div>
+        <div className="sbar-row">
+          <span className="sbar-lbl">Negatif</span>
+          <div className="sbar-track"><div className="sbar-fill" style={negFill} /></div>
+          <span className="sbar-pct">{(data.negative_pct || 0) + "%"}</span>
+        </div>
+      </>
+    )
+  }
+
+  // ─── Render dual model comparison ───
+  const renderComparison = () => {
+    const overallColor1 = s.overall === "positive" ? "var(--green)" : s.overall === "negative" ? "var(--red)" : "var(--amber)"
+    const overallLabel1 = s.overall === "positive" ? "Positif" : s.overall === "negative" ? "Negatif" : "Netral"
+    const circleBg1 = s.overall === "positive" ? "rgba(45,212,160,0.1)" : s.overall === "negative" ? "rgba(245,94,94,0.1)" : "rgba(245,183,49,0.1)"
+    const circleStyle1 = { background: circleBg1, borderColor: overallColor1 + "40" }
+    const numStyle1 = { color: overallColor1 }
+
+    const overallColor2 = llmSummary.overall === "positive" ? "var(--green)" : llmSummary.overall === "negative" ? "var(--red)" : "var(--amber)"
+    const overallLabel2 = llmSummary.overall === "positive" ? "Positif" : llmSummary.overall === "negative" ? "Negatif" : "Netral"
+    const circleBg2 = llmSummary.overall === "positive" ? "rgba(45,212,160,0.1)" : llmSummary.overall === "negative" ? "rgba(245,94,94,0.1)" : "rgba(245,183,49,0.1)"
+    const circleStyle2 = { background: circleBg2, borderColor: overallColor2 + "40" }
+    const numStyle2 = { color: overallColor2 }
+
+    const renderCompareRow = (label, pct1, pct2, color) => (
+      <div style={{ marginBottom: 12 }} key={label}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
+          <span style={{ fontWeight: 600 }}>{label}</span>
+          <span style={{ color: "var(--text-muted)", fontSize: 10 }}>HF: {pct1}% vs LLM: {pct2}%</span>
+        </div>
+        {/* HF Track */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <span style={{ fontSize: 8, width: 22, color: "var(--text-muted)", fontWeight: 500 }}>HF</span>
+          <div className="sbar-track" style={{ flex: 1, height: 4 }}><div className="sbar-fill" style={{ width: pct1 + "%", background: color }} /></div>
+        </div>
+        {/* LLM Track */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 8, width: 22, color: "var(--text-muted)", fontWeight: 500 }}>LLM</span>
+          <div className="sbar-track" style={{ flex: 1, height: 4 }}><div className="sbar-fill" style={{ width: pct2 + "%", background: color }} /></div>
+        </div>
+      </div>
+    )
+
+    return (
+      <>
+        <div className="sent-top" style={{ display: "flex", justifyContent: "space-around", gap: 10, padding: "10px 0 16px 0", borderBottom: "1px solid var(--border-light)", marginBottom: 14 }}>
+          {/* Left: Finetune */}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+            <div className="sent-circle" style={{ ...circleStyle1, width: 56, height: 56, borderWidth: 1.5 }}>
+              <span className="sent-num" style={{ ...numStyle1, fontSize: 16 }}>{s.score || "—"}</span>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, ...numStyle1 }}>{overallLabel1}</div>
+              <div style={{ fontSize: 9, color: "var(--text-muted)" }}>Finetune (HF)</div>
+            </div>
+          </div>
+          {/* Divider */}
+          <div style={{ borderLeft: "1px solid var(--border-light)", height: 70, alignSelf: "center" }} />
+          {/* Right: LLM */}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+            <div className="sent-circle" style={{ ...circleStyle2, width: 56, height: 56, borderWidth: 1.5 }}>
+              <span className="sent-num" style={{ ...numStyle2, fontSize: 16 }}>{llmSummary.score || "—"}</span>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, ...numStyle2 }}>{overallLabel2}</div>
+              <div style={{ fontSize: 9, color: "var(--text-muted)" }}>LLM (Groq)</div>
+            </div>
+          </div>
+        </div>
+
+        {renderCompareRow("Positif", s.positive_pct || 0, llmSummary.positive_pct || 0, "var(--green)")}
+        {renderCompareRow("Netral", s.neutral_pct || 0, llmSummary.neutral_pct || 0, "var(--amber)")}
+        {renderCompareRow("Negatif", s.negative_pct || 0, llmSummary.negative_pct || 0, "var(--red)")}
+      </>
+    )
+  }
+
   return (
     <>
-      <div className="sent-top">
-        <div className="sent-circle" style={circleStyle}>
-          <span className="sent-num" style={numStyle}>{s.score || "—"}</span>
-        </div>
-        <div className="sent-info">
-          <h4 style={headStyle}>{overallLabel}</h4>
-          <p>{(news.total_articles || 0) + " artikel dianalisis · Model sentimen finetune"}</p>
-        </div>
-      </div>
-      <div className="sbar-row">
-        <span className="sbar-lbl">Positif</span>
-        <div className="sbar-track"><div className="sbar-fill" style={posFill} /></div>
-        <span className="sbar-pct">{(s.positive_pct || 0) + "%"}</span>
-      </div>
-      <div className="sbar-row">
-        <span className="sbar-lbl">Netral</span>
-        <div className="sbar-track"><div className="sbar-fill" style={neuFill} /></div>
-        <span className="sbar-pct">{(s.neutral_pct || 0) + "%"}</span>
-      </div>
-      <div className="sbar-row">
-        <span className="sbar-lbl">Negatif</span>
-        <div className="sbar-track"><div className="sbar-fill" style={negFill} /></div>
-        <span className="sbar-pct">{(s.negative_pct || 0) + "%"}</span>
-      </div>
-      <div className="ai-box">
+      {renderSelector()}
+      
+      {sentModel === "compare" && renderComparison()}
+      {sentModel === "finetune" && renderSingleModel(s, "Model sentimen finetune")}
+      {sentModel === "llm" && renderSingleModel(llmSummary, "Model sentimen LLM")}
+
+      <div className="ai-box" style={{ marginTop: 16 }}>
         <div className="ai-lbl"><span>✦</span> Ringkasan Groq AI</div>
         <span>{aiSummary || "Membuat ringkasan AI..."}</span>
       </div>
@@ -1043,23 +1234,38 @@ function renderNews(news, err) {
     const def = { color: "var(--text-muted)", fontSize: 12, padding: "12px 0", textAlign: "center" }
     return <div style={def}>Belum ada berita. Klik “↻ Ambil Berita”.</div>
   }
-  return articles.map((a, i) => {
-    const pillClass = a.sentiment === "positive" ? "sp-pos" : a.sentiment === "negative" ? "sp-neg" : "sp-neu"
-    const pillLabel = a.sentiment_label || (a.sentiment === "positive" ? "Positif" : a.sentiment === "negative" ? "Negatif" : "Netral")
+  // Tampilkan 5 berita teratas dengan visual dual-score persis halaman sentimen
+  return articles.slice(0, 5).map((a, i) => {
+    const hfMeta  = SENT_META[a.sentiment]      || SENT_META.neutral
+    const llmMeta = SENT_META[a.llm_sentiment]  || SENT_META.neutral
     return (
-      <div className="news-item" key={i}>
-        <div className="news-meta">
-          <span className="news-src">{a.source}</span>
-          <span className="news-time">{"· " + (a.time || "")}</span>
+      <div className="eNews-item" key={i}>
+        {/* Dual score badges */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 52 }}>
+          <div className={"eNews-score-badge " + hfMeta.cls}>
+            {Math.round((a.score || 0) * 100)}
+            <span className="esb-sub">HF: {hfMeta.short}</span>
+          </div>
+          <div className={"eNews-score-badge " + llmMeta.cls}>
+            {Math.round((a.llm_score || 0) * 100)}
+            <span className="esb-sub">LLM: {llmMeta.short}</span>
+          </div>
         </div>
-        <div className="news-title-text">
-          {a.url ? (
-            <a href={a.url} target="_blank" rel="noopener noreferrer">{a.title}</a>
-          ) : (
-            a.title
-          )}
+
+        <div className="eNews-body">
+          <div className="eNews-title">
+            {a.url
+              ? <a href={a.url} target="_blank" rel="noreferrer">{a.title}</a>
+              : a.title}
+          </div>
+          <div className="eNews-meta">
+            <span className="eNews-src">{CAT_LABELS[a.category] || a.category}</span>
+            <span className="eNews-time">{a.time || a.source}</span>
+            <span className="eNews-impact impact-med">
+              Finetune: {hfMeta.label} &nbsp;|&nbsp; LLM: {llmMeta.label}
+            </span>
+          </div>
         </div>
-        <span className={"sent-pill " + pillClass}>{"● " + pillLabel}</span>
       </div>
     )
   })
