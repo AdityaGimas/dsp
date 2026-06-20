@@ -30,12 +30,12 @@ const FALLBACK_STOCKS = [
 
 export function AppProvider({ children }) {
   const [allStocks, setAllStocks] = useState([])
-  const [currentTicker, setCurrentTicker] = useState("BBCA.JK")
+  const [currentTicker, setCurrentTicker] = useState(null)
   const [watchlist, setWatchlist] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem("wl_stocksense") || '["BBCA.JK"]')
+      return JSON.parse(localStorage.getItem("wl_stocksense") || '[]')
     } catch (e) {
-      return ["BBCA.JK"]
+      return []
     }
   })
 
@@ -64,6 +64,7 @@ export function AppProvider({ children }) {
     allStocks,
     currentTicker,
     setCurrentTicker,
+    hasSelectedTicker: currentTicker !== null,
     watchlist,
     addToWatchlist,
     removeFromWatchlist,
