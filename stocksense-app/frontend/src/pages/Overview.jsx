@@ -67,7 +67,7 @@ export default function Overview() {
 
   const [info, setInfo] = useState(null)
   const [hist, setHist] = useState([])
-  const [period, setPeriod] = useState("6mo")
+  const [period, setPeriod] = useState("3mo")
   const [indicators, setIndicators] = useState(null)
   const [mlPred, setMlPred] = useState(null)
   const [groqTech, setGroqTech] = useState(null)
@@ -263,13 +263,46 @@ export default function Overview() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [news, newsBusy, newsErr, newsTs, currentTicker])
 
+  // Range-band chart plugin — draws shaded area between high/low
+  const ovRangeBandPlugin = useMemo(() => ({
+    id: "ovRangeBand",
+    afterDraw(chart) {
+      const { ctx, chartArea, scales } = chart
+      if (!chartArea) return
+      [
+        { key: "_isXgbBand", color: "rgba(45,212,160,0.10)" },
+        { key: "_isLlmBand", color: "rgba(167,139,250,0.10)" },
+      ].forEach(({ key, color }) => {
+        const ds = chart.data.datasets.find((d) => d[key])
+        if (!ds) return
+        const bandData = ds._bandData || []
+        if (!bandData.length) return
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top)
+        ctx.clip()
+        ctx.fillStyle = color
+        ctx.beginPath()
+        bandData.forEach(({ x, high }, i) => {
+          const px = scales.x.getPixelForValue(x)
+          const py = scales.y.getPixelForValue(high)
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
+        })
+        for (let i = bandData.length - 1; i >= 0; i--) {
+          const { x, low } = bandData[i]
+          ctx.lineTo(scales.x.getPixelForValue(x), scales.y.getPixelForValue(low))
+        }
+        ctx.closePath()
+        ctx.fill()
+        ctx.restore()
+      })
+    },
+  }), [])
+
   const chartData = useMemo(() => {
     const histLabels = hist.map((r) => r.date)
     const closes = hist.map((r) => r.close)
-    const ma20 = closes.map((_, i) =>
-      i < 19 ? null : Math.round(closes.slice(i - 19, i + 1).reduce((a, b) => a + b, 0) / 20),
-    )
-    const predDates = (mlPred?.predictions || []).map((p) => p.date)
+    const predDates = (mlPred?.predictions || []).slice(0, 3).map((p) => p.date)
     const histLen = histLabels.length
     const lastClose = closes[histLen - 1]
     const labels = [...histLabels, ...predDates]
@@ -295,33 +328,55 @@ export default function Overview() {
     ]
 
     if (predDates.length && Number.isFinite(lastClose)) {
+      const mlPreds3 = mlPred.predictions.slice(0, 3)
       const mlConnector = Array(histLen).fill(null)
       mlConnector[histLen - 1] = lastClose
       datasets.push({
-        label: "XGBoost Prediksi",
-        data: [...mlConnector, ...mlPred.predictions.map((p) => p.price)],
-        borderColor: "#4f9cf9",
+        label: "XGBoost",
+        data: [...mlConnector, ...mlPreds3.map((p) => p.price)],
+        borderColor: "#2dd4a0",
         borderWidth: 2,
         borderDash: [6, 4],
-        pointRadius: 3,
-        pointBackgroundColor: "#4f9cf9",
+        pointRadius: [...Array(histLen - 1).fill(0), 3, ...mlPreds3.map(() => 4)],
+        pointBackgroundColor: "#2dd4a0",
         tension: 0.3,
         fill: false,
+        _isXgbBand: true,
+        _bandData: mlPreds3.map((p, i) => ({
+          x: predDates[i],
+          low: p.price_low ?? p.price * 0.98,
+          high: p.price_high ?? p.price * 1.02,
+        })),
       })
+
       if (groqTech?.price_tomorrow) {
+        const llmPrices = [
+          groqTech.price_tomorrow,
+          groqTech.day2_price,
+          groqTech.day3_price,
+        ].filter(Boolean)
+        const llmLow = [groqTech.price_tomorrow_low, groqTech.day2_low, groqTech.day3_low]
+        const llmHigh = [groqTech.price_tomorrow_high, groqTech.day2_high, groqTech.day3_high]
+
         const gd = Array(labels.length).fill(null)
         gd[histLen - 1] = lastClose
-        gd[histLen] = groqTech.price_tomorrow
+        llmPrices.forEach((p, i) => { if (p) gd[histLen + i] = p })
         datasets.push({
-          label: "LLM Prediksi",
+          label: "LLM",
           data: gd,
           borderColor: "#a78bfa",
           borderWidth: 2,
           borderDash: [6, 4],
-          pointRadius: 3,
+          pointRadius: [...Array(histLen - 1).fill(0), 3, ...llmPrices.map(() => 4)],
           pointBackgroundColor: "#a78bfa",
           tension: 0.3,
           fill: false,
+          _isLlmBand: true,
+          _bandData: llmPrices.map((_, i) => ({
+            x: predDates[i],
+            low: llmLow[i] ?? lastClose * 0.97,
+            high: llmHigh[i] ?? lastClose * 1.03,
+          })),
         })
       }
     }
@@ -370,10 +425,10 @@ export default function Overview() {
   const sentKpiStyle = news ? sentColor : S.tealTxt
   const signalStyle = ov.signal ? { color: indColor(ov.signal) } : S.greenTxt
   const periods = [
-    { id: "1mo", lbl: "1M" },
-    { id: "3mo", lbl: "3M" },
-    { id: "6mo", lbl: "6M" },
-    { id: "1y", lbl: "1Y" },
+    { id: "1mo", lbl: "1B" },
+    { id: "3mo", lbl: "3B" },
+    { id: "6mo", lbl: "6B" },
+    { id: "1y", lbl: "1T" },
   ]
 
   return (
@@ -432,7 +487,7 @@ export default function Overview() {
             <div className="kpi-sub">Model: {mlPred?.model_name || "—"}</div>
           </div>
           <div className="kpi-card kpi-c-blue">
-            <div className="kpi-label">XGBoost Besok</div>
+            <div className="kpi-label">XGBoost H+1</div>
             <div className="kpi-val" style={S.blueTxt}>{mlFirst ? fmt(mlFirst.price) : "—"}</div>
             <div className="kpi-sub">
               {mlFirst ? (
@@ -442,7 +497,7 @@ export default function Overview() {
               ) : (
                 "—"
               )}{" "}
-              besok
+              {mlFirst?.price_low && mlFirst?.price_high ? `(${fmt(mlFirst.price_low)}–${fmt(mlFirst.price_high)})` : "besok"}
             </div>
           </div>
           <div className="kpi-card kpi-c-purple">
@@ -491,12 +546,12 @@ export default function Overview() {
               </div>
               <div className="chart-legend">
                 <span className="leg-item"><span className="leg-line" style={S.legSolidBlue} />Historis</span>
-                <span className="leg-item"><span className="leg-line" style={S.legDashBlue} />XGBoost Prediksi</span>
-                <span className="leg-item"><span className="leg-line" style={S.legDashPurple} />LLM Prediksi</span>
+                <span className="leg-item"><span className="leg-line" style={{ background: "#2dd4a0", borderTop: "2px dashed #2dd4a0", height: 0 }} />XGBoost ± Rentang</span>
+                <span className="leg-item"><span className="leg-line" style={S.legDashPurple} />LLM ± Rentang</span>
               </div>
               <div className="card-body">
                 <div className="chart-wrap">
-                  <Line data={chartData} options={chartOptions} />
+                  <Line data={chartData} options={chartOptions} plugins={[ovRangeBandPlugin]} />
                 </div>
               </div>
             </div>
@@ -681,15 +736,24 @@ function renderDualPred(ml, grok, busy) {
 
   const mlBody = ml ? (
     <>
-      <div className="pred-src-badge badge-ml">⚡ Model XGBoost</div>
+      <div className="pred-src-badge badge-ml">⚡ Model XGBoost — 3 Hari</div>
       <div className="pred-src-price">{fmt(ml.predictions?.[0]?.price)}</div>
       <span className={"pred-src-chg " + (ml.predictions?.[0]?.change_pct >= 0 ? "chg-pos-bg" : "chg-neg-bg")}>
-        {(ml.predictions?.[0]?.change_pct >= 0 ? "+" : "") + (ml.predictions?.[0]?.change_pct?.toFixed(2) || 0) + "%"}
+        {(ml.predictions?.[0]?.change_pct >= 0 ? "+" : "") + (ml.predictions?.[0]?.change_pct?.toFixed(2) || 0) + "% H+1"}
       </span>
       <div className="pred-src-meta">
         <div className="pred-src-row"><span className="pred-src-k">Akurasi Model</span><span className="pred-src-v">{(ml.model_accuracy?.toFixed(1) || "—") + "%"}</span></div>
         <div className="pred-src-row"><span className="pred-src-k">Confidence</span><span className="pred-src-v">{Math.round((ml.confidence || 0) * 100) + "%"}</span></div>
         <div className="pred-src-row"><span className="pred-src-k">Rekomendasi</span><span className="pred-src-v" style={mlRecStyle}>{recLabel(ml.recommendation || "HOLD")}</span></div>
+        {ml.predictions?.slice(0, 3).map((p, i) => (
+          <div className="pred-src-row" key={i}>
+            <span className="pred-src-k">H+{i + 1}</span>
+            <span className="pred-src-v" style={{ color: p.change_pct >= 0 ? "var(--green)" : "var(--red)" }}>
+              {fmt(p.price)}&nbsp;
+              {p.price_low && p.price_high ? <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: 9 }}>({fmt(p.price_low)}–{fmt(p.price_high)})</span> : null}
+            </span>
+          </div>
+        ))}
       </div>
     </>
   ) : (
@@ -701,16 +765,29 @@ function renderDualPred(ml, grok, busy) {
 
   const grokBody = grok ? (
     <>
-      <div className="pred-src-badge badge-grok">✦ Prediksi LLM Langsung</div>
+      <div className="pred-src-badge badge-grok">✦ Prediksi LLM — 3 Hari</div>
       <div className="pred-src-price" style={{fontSize: 20}}>
-        {fmt(grok.price_min_5d || grok.price_range_5d?.min)} – {fmt(grok.price_max_5d || grok.price_range_5d?.max)}
+        {fmt(grok.price_range_3d?.min || grok.price_tomorrow_low)} – {fmt(grok.price_range_3d?.max || grok.price_tomorrow_high)}
       </div>
       <span className="pred-src-chg" style={{ ...rangeStyle, padding: "2px 8px", borderRadius: 4, display: "inline-block", marginBottom: 8 }}>
-        {"Besok: " + fmt(grok.price_tomorrow)}
+        {"H+1: " + fmt(grok.price_tomorrow)}
       </span>
       <div className="pred-src-meta">
         <div className="pred-src-row"><span className="pred-src-k">Confidence</span><span className="pred-src-v">{Math.round((grok.confidence || 0) * 100) + "%"}</span></div>
         <div className="pred-src-row"><span className="pred-src-k">Rekomendasi</span><span className="pred-src-v" style={grokRecStyle}>{recLabel(grok.recommendation || "HOLD")}</span></div>
+        {[
+          { lbl: "H+1", price: grok.price_tomorrow, lo: grok.price_tomorrow_low, hi: grok.price_tomorrow_high },
+          { lbl: "H+2", price: grok.day2_price, lo: grok.day2_low, hi: grok.day2_high },
+          { lbl: "H+3", price: grok.day3_price, lo: grok.day3_low, hi: grok.day3_high },
+        ].filter(r => r.price).map((r, i) => (
+          <div className="pred-src-row" key={i}>
+            <span className="pred-src-k">{r.lbl}</span>
+            <span className="pred-src-v" style={{ color: "var(--purple)" }}>
+              {fmt(r.price)}&nbsp;
+              {r.lo && r.hi ? <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: 9 }}>({fmt(r.lo)}–{fmt(r.hi)})</span> : null}
+            </span>
+          </div>
+        ))}
         <div style={reasonsStyle}>{(grok.reasons || []).map((r, i) => <div key={i}>{"• " + r}</div>)}</div>
       </div>
     </>

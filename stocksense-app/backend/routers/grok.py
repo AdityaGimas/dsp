@@ -25,7 +25,7 @@ def get_key(req_key: Optional[str]) -> str:
     return key
 
 
-async def groq_chat(messages: list, api_key: str, model: str, max_tokens: int = 600) -> dict:
+async def groq_chat(messages: list, api_key: str, model: str, max_tokens: int = 700) -> dict:
     async with httpx.AsyncClient(timeout=40) as c:
         r = await c.post(GROQ_URL,
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
@@ -52,7 +52,7 @@ class TechReq(BaseModel):
 
 @router.post("/technical")
 async def groq_technical(req: TechReq):
-    """Model: llama-3.1-8b-instant — analisis teknikal → estimasi harga."""
+    """Model: llama-3.1-8b-instant — analisis teknikal → estimasi harga 3 hari."""
     key = get_key(req.api_key)
     ind = req.indicators
     ml  = req.ml_prediction or {}
@@ -67,9 +67,17 @@ HARGA SAAT INI: Rp {req.current_price:,.0f}
 - Volume Ratio: {ind.get('volume_ratio',{}).get('value','?')}x
 - Referensi ML: {ml.get('recommendation','?')} conf {round(ml.get('confidence',0)*100)}%
 
-Balas HANYA JSON valid ini tanpa teks lain (ganti angka-angka dengan estimasi nyatanya, bukan string):
-{{"price_tomorrow": 5100,"price_range_5d":{{"min": 4900,"max": 5300}},"recommendation":"BUY"|"SELL"|"HOLD","confidence":0.85,"reasons":["r1","r2","r3"],"summary":"<2 kalimat>"}}"""
-    res  = await groq_chat([{"role":"user","content":prompt}], key, MODEL_TECHNICAL)
+Beri prediksi 3 hari ke depan DENGAN RENTANG HARGA (bukan nilai pas). Sertakan low dan high realistis berdasarkan volatilitas.
+Balas HANYA JSON valid ini tanpa teks lain (ganti semua angka dengan estimasi nyata dalam Rupiah):
+{{"price_tomorrow": 5100, "price_tomorrow_low": 4950, "price_tomorrow_high": 5250,
+  "day2_price": 5150, "day2_low": 4900, "day2_high": 5400,
+  "day3_price": 5200, "day3_low": 4850, "day3_high": 5550,
+  "price_range_3d": {{"min": 4850, "max": 5550}},
+  "recommendation": "BUY",
+  "confidence": 0.82,
+  "reasons": ["r1","r2","r3"],
+  "summary": "<2 kalimat>"}}"""
+    res  = await groq_chat([{"role":"user","content":prompt}], key, MODEL_TECHNICAL, max_tokens=700)
     data = parse_json(res["choices"][0]["message"]["content"])
     return {"ticker": req.ticker, "source": "groq_technical", **data}
 
