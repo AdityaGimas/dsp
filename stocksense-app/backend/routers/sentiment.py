@@ -1,28 +1,25 @@
 """
 sentiment.py — Dual sentiment inference:
-  1. Finetuned IndoBERT (lokal, dari folder indobert-finansial-sentiment)
+  1. Finetuned IndoBERT via Hugging Face Space (cloud, tanpa GPU lokal)
   2. Groq LLM (cloud, llama-3.1-8b-instant)
-Model lokal di-load sekali pada startup (singleton), tidak perlu internet.
+Model dijalankan di server Hugging Face Space, hanya butuh URL Space.
 """
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import List, Optional
 import os
 import asyncio
+import httpx
+from dotenv import load_dotenv
 from .grok import groq_chat, get_key, parse_json
+
+load_dotenv()
 
 router = APIRouter()
 
-# ─── Path model lokal ─────────────────────────────────────────────────────────
-_BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_MODEL_PATH  = os.path.join(
-    _BACKEND_DIR, "..", "indobert-finansial-sentiment"
-)
-_MODEL_PATH  = os.path.normpath(_MODEL_PATH)
-
-# ─── Singleton: load sekali, cache selamanya ──────────────────────────────────
-_hf_pipe = None
-_hf_lock = asyncio.Lock()
+# ─── HF Space config ─────────────────────────────────────────────────────────
+HF_API_TOKEN  = os.getenv("HF_API_TOKEN", "")
+HF_SPACE_URL  = os.getenv("HF_SPACE_URL", "https://reehandn-sentiment-api.hf.space")
 
 # Label map: IndoBERT dilatih dengan 0=bearish, 1=neutral, 2=bullish
 # (sesuai notebook Pipeline_Finetune_Sentiment.ipynb)
@@ -35,35 +32,6 @@ LABEL_MAP = {
     "negative": "negative",
 }
 
-def _load_local_model():
-    """Load IndoBERT dari disk. Dipanggil sekali saat pertama request."""
-    global _hf_pipe
-    if _hf_pipe is not None:
-        return _hf_pipe
-    try:
-        from transformers import (
-            pipeline,
-            AutoModelForSequenceClassification,
-            AutoTokenizer,
-        )
-        print(f"[Sentiment] Loading local model from: {_MODEL_PATH}")
-        tok  = AutoTokenizer.from_pretrained(_MODEL_PATH, local_files_only=True)
-        mdl  = AutoModelForSequenceClassification.from_pretrained(
-            _MODEL_PATH, local_files_only=True
-        )
-        _hf_pipe = pipeline(
-            "text-classification",
-            model=mdl,
-            tokenizer=tok,
-            top_k=1,
-            device=-1,   # CPU
-        )
-        print("[Sentiment] Local model loaded OK.")
-        return _hf_pipe
-    except Exception as e:
-        print(f"[Sentiment] Failed to load local model: {e}")
-        return None
-
 # ─── Pydantic models ──────────────────────────────────────────────────────────
 class ArticleInput(BaseModel):
     title:    str
@@ -75,37 +43,84 @@ class SentimentRequest(BaseModel):
     articles: List[ArticleInput]
     api_key:  Optional[str] = None
 
-# ─── HF local inference ───────────────────────────────────────────────────────
-def _run_hf_local(texts: list) -> list:
-    """Run inference lokal (blocking, dipanggil via executor)."""
-    pipe = _load_local_model()
-    if pipe is None:
-        return [{"label": "neutral", "score": 0.5}] * len(texts)
-    results = []
-    for text in texts:
+# ─── HF Space API (cloud) ────────────────────────────────────────────────────
+async def _call_hf_api(texts: list, max_retries: int = 3) -> list:
+    """
+    Panggil HF Space (Docker) untuk klasifikasi sentimen.
+    Space menjalankan model finetuned IndoBERT dari repo HF.
+    Mendukung retry otomatis saat Space sedang loading (cold start).
+    """
+    headers = {"Content-Type": "application/json"}
+    if HF_API_TOKEN:
+        headers["Authorization"] = f"Bearer {HF_API_TOKEN}"
+    payload = {"inputs": texts}
+
+    for attempt in range(max_retries):
         try:
-            out   = pipe(text[:512], top_k=1)
-            top   = out[0][0] if isinstance(out[0], list) else out[0]
-            raw   = top.get("label", "LABEL_1")
-            label = LABEL_MAP.get(raw, "neutral")
+            async with httpx.AsyncClient(timeout=120) as client:
+                resp = await client.post(
+                    f"{HF_SPACE_URL}/predict",
+                    headers=headers,
+                    json=payload,
+                )
+
+                if resp.status_code == 503:
+                    # Space sedang loading (cold start), tunggu lalu retry
+                    wait_time = 30
+                    print(f"[Sentiment] Space loading, retry in {wait_time}s (attempt {attempt+1}/{max_retries})")
+                    await asyncio.sleep(wait_time)
+                    continue
+
+                if resp.status_code == 429:
+                    print(f"[Sentiment] Rate limited, retry in 5s (attempt {attempt+1}/{max_retries})")
+                    await asyncio.sleep(5)
+                    continue
+
+                if not resp.is_success:
+                    print(f"[Sentiment] Space API error {resp.status_code}: {resp.text[:300]}")
+                    return [{"label": "neutral", "score": 0.5}] * len(texts)
+
+                return resp.json()
+
+        except Exception as e:
+            print(f"[Sentiment] Space API request failed (attempt {attempt+1}): {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(5)
+
+    print("[Sentiment] All Space API retries exhausted")
+    return [{"label": "neutral", "score": 0.5}] * len(texts)
+
+
+async def predict_hf(articles: List[ArticleInput]) -> list:
+    """
+    Inference via Hugging Face Inference API (cloud).
+    Mengirim semua teks sekaligus dalam satu batch request.
+    """
+    texts = [f"{a.title} {a.content}"[:512] for a in articles]
+
+    raw_results = await _call_hf_api(texts)
+
+    results = []
+    for i, item in enumerate(raw_results):
+        try:
+            # HF API mengembalikan list of list: [[{label, score}, ...], ...]
+            if isinstance(item, list):
+                top = item[0]  # ambil label dengan score tertinggi
+            else:
+                top = item
+
+            raw_label = top.get("label", "LABEL_1")
+            label = LABEL_MAP.get(raw_label, "neutral")
             score = float(top.get("score", 0.5))
             results.append({"label": label, "score": score})
         except Exception:
             results.append({"label": "neutral", "score": 0.5})
-    return results
 
-async def predict_hf(articles: List[ArticleInput]) -> list:
-    """Async wrapper untuk local model inference."""
-    texts = [f"{a.title} {a.content}"[:512] for a in articles]
-    loop  = asyncio.get_event_loop()
-    try:
-        return await asyncio.wait_for(
-            loop.run_in_executor(None, _run_hf_local, texts),
-            timeout=60.0,
-        )
-    except asyncio.TimeoutError:
-        print("[Sentiment] Local model inference timeout")
-        return [{"label": "neutral", "score": 0.5}] * len(articles)
+    # Jika hasil lebih sedikit dari input (misal API error partial), pad dengan neutral
+    while len(results) < len(articles):
+        results.append({"label": "neutral", "score": 0.5})
+
+    return results
 
 # ─── Groq LLM inference ───────────────────────────────────────────────────────
 async def predict_llm(ticker: str, articles: List[ArticleInput], api_key: str) -> list:
