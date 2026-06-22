@@ -150,7 +150,7 @@ Berita:
         from .grok import MODEL_NEWS
         res  = await groq_chat_rotate(
             [{"role": "user", "content": prompt}],
-            model=MODEL_NEWS, max_tokens=2000, api_key=api_key
+            model=MODEL_NEWS, max_tokens=2000, api_key=api_key, json_mode=True
         )
         content = res["choices"][0]["message"]["content"]
         # Cari block JSON jika ada teks tambahan
