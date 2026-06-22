@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Line } from "react-chartjs-2"
 import { useApp } from "../context/AppContext.jsx"
 import { api } from "../api/client.js"
@@ -302,15 +302,22 @@ export default function Overview() {
     }
   }
 
+  // Guard ref: React StrictMode (dev) menjalankan effect 2x sebelum state
+  // sempat berubah, sehingga Groq bisa terpanggil ganda. Ref dibaca/ditulis
+  // sinkron, jadi hanya 1 auto-call per ticker. Tombol manual tetap jalan.
+  const autoTechRef = useRef(null)
   useEffect(() => {
-    if (indicators && mlPred && !groqTech && !groqTechBusy && !groqTechErr && !groqTechTs) {
+    if (indicators && mlPred && !groqTech && !groqTechBusy && !groqTechErr && !groqTechTs && autoTechRef.current !== currentTicker) {
+      autoTechRef.current = currentTicker
       runGroqTechnical()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indicators, mlPred, groqTech, groqTechBusy, groqTechErr, groqTechTs])
+  }, [indicators, mlPred, groqTech, groqTechBusy, groqTechErr, groqTechTs, currentTicker])
 
+  const autoNewsRef = useRef(null)
   useEffect(() => {
-    if (!news && !newsBusy && !newsErr && !newsTs) {
+    if (!news && !newsBusy && !newsErr && !newsTs && autoNewsRef.current !== currentTicker) {
+      autoNewsRef.current = currentTicker
       fetchNews()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

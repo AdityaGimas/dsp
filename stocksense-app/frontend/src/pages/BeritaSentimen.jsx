@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Line } from "react-chartjs-2"
 import {
   Chart as ChartJS,
@@ -101,7 +101,14 @@ export default function BeritaSentimen() {
     }
   }
 
+  // Guard: cegah fetch ganda. React StrictMode (dev) memanggil effect 2x, dan
+  // tiap auto-fetch ini memicu sentiment + 2 panggilan Groq yang mahal & boros
+  // limit API. Tombol "Ambil Berita" manual tetap memanggil fetchNews langsung.
+  const lastFetched = useRef(null)
   useEffect(() => {
+    if (!currentTicker) return
+    if (lastFetched.current === currentTicker) return
+    lastFetched.current = currentTicker
     setNews(null); setAiSummary(""); setErr("")
     fetchNews()
     // eslint-disable-next-line react-hooks/exhaustive-deps
