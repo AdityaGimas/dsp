@@ -37,6 +37,7 @@ export const api = {
   groqTechnical: (payload) => postJSON("/grok/technical", payload),
   groqNewsSummary: (payload) => postJSON("/grok/news-summary", payload),
   groqFinalReco: (payload) => postJSON("/grok/final-recommendation", payload),
+  chat: (payload) => postJSON("/chat", payload),
 }
 
 export { API_BASE }

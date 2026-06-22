@@ -6,6 +6,7 @@ import Forecasting from "./pages/Forecasting.jsx"
 import BeritaSentimen from "./pages/BeritaSentimen.jsx"
 import IndikatorTeknikal from "./pages/IndikatorTeknikal.jsx"
 import MakroEkonomi from "./pages/MakroEkonomi.jsx"
+import ChatAI from "./pages/ChatAI.jsx"
 import { useApp } from "./context/AppContext.jsx"
 
 function ProtectedRoute({ children }) {
@@ -56,6 +57,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <MakroEkonomi />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/chat"
+          element={
+            <ProtectedRoute>
+              <ChatAI />
             </ProtectedRoute>
           }
         />

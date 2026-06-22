@@ -8,6 +8,7 @@ const NAV = [
   { to: "/berita", icon: "❚❚", label: "Berita & Sentimen" },
   { to: "/indikator", icon: "⚡", label: "Indikator Teknikal" },
   { to: "/makro", icon: "📊", label: "Makro Ekonomi" },
+  { to: "/chat", icon: "💬", label: "Chat AI" },
 ]
 
 const S = {
