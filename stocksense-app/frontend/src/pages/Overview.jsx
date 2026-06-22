@@ -96,6 +96,7 @@ export default function Overview() {
   const [newsErr, setNewsErr] = useState("")
   const [groqTechTs, setGroqTechTs] = useState(null)
   const [newsTs, setNewsTs] = useState(null)
+  const [refreshing, setRefreshing] = useState(false)
 
   const code = currentTicker.replace(".JK", "")
 
@@ -165,6 +166,30 @@ export default function Overview() {
       alive = false
     }
   }, [currentTicker, period])
+
+  // Refresh manual: ambil ulang data pasar inti (info, indikator, prediksi,
+  // chart, makro) dengan menembus cache server (refresh=true).
+  function refreshAll() {
+    const t = currentTicker
+    setRefreshing(true)
+    Promise.allSettled([
+      api.getStockInfo(t, true),
+      api.getIndicators(t, true),
+      api.getPrediction(t),
+      api.getHistory(t, period, true),
+      api.getMacro(true),
+    ]).then(([f, i, p, h, mac]) => {
+      setInfo(f.status === "fulfilled" ? f.value : null)
+      setIndicators(i.status === "fulfilled" && i.value && i.value.rsi ? i.value : null)
+      if (p.status === "fulfilled") {
+        setMlPred(p.value)
+        saveCache(t, "ml", p.value)
+      }
+      setHist(h.status === "fulfilled" && h.value.data && h.value.data.length ? h.value.data : [])
+      if (mac.status === "fulfilled") setMacroData(mac.value.data)
+      setRefreshing(false)
+    })
+  }
 
   async function runGroqTechnical() {
     if (!indicators) {
@@ -495,7 +520,12 @@ export default function Overview() {
 
   return (
     <>
-      <TickerSearchBar label="Pilih Saham" />
+      <TickerSearchBar label="Pilih Saham">
+        <button className={"fetch-news-btn " + (refreshing ? "loading" : "")} onClick={refreshAll} disabled={refreshing}>
+          <span className="spin-sm" />
+          <span className="btn-txt">{refreshing ? "Memuat..." : "↻ Refresh"}</span>
+        </button>
+      </TickerSearchBar>
 
       <div className="content">
         <div className="stock-header">

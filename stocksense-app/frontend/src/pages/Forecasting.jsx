@@ -370,7 +370,7 @@ export default function Forecasting() {
           onClick={() => {
             setXgbPred(null); setLlmPred(null)
             setBusy(true)
-            Promise.allSettled([api.getHistory(currentTicker, histPeriod), api.getPrediction(currentTicker)])
+            Promise.allSettled([api.getHistory(currentTicker, histPeriod, true), api.getPrediction(currentTicker)])
               .then(([h, p]) => {
                 const hd = h.status === "fulfilled" && h.value.data?.length ? h.value.data : mockHistory(3)
                 const lastC = hd.length ? hd[hd.length - 1].close : 9400

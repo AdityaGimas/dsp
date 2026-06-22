@@ -24,14 +24,14 @@ async function postJSON(path, body) {
 
 export const api = {
   getStockList: () => getJSON("/stocks/list"),
-  getStockInfo: (t) => getJSON(`/stocks/${t}/info`),
-  getHistory: (t, period) => getJSON(`/stocks/${t}/history?period=${period}`),
-  getIndicators: (t) => getJSON(`/stocks/${t}/indicators`),
+  getStockInfo: (t, refresh = false) => getJSON(`/stocks/${t}/info` + (refresh ? "?refresh=true" : "")),
+  getHistory: (t, period, refresh = false) => getJSON(`/stocks/${t}/history?period=${period}` + (refresh ? "&refresh=true" : "")),
+  getIndicators: (t, refresh = false) => getJSON(`/stocks/${t}/indicators` + (refresh ? "?refresh=true" : "")),
   getPrediction: (t) => getJSON(`/prediction/${t}`),
   getNews: (t, perSource = 50) => getJSON(`/news/${t}?per_source=${perSource}`),
   predictSentiment: (ticker, articles) =>
     postJSON("/sentiment/predict", { ticker, articles }),
-  getMacro: () => getJSON("/macro"),
+  getMacro: (refresh = false) => getJSON("/macro" + (refresh ? "?refresh=true" : "")),
   // Groq calls now go through the FastAPI backend proxy (/api/grok/*),
   // so the API key is never exposed in the browser network tab to third parties.
   groqTechnical: (payload) => postJSON("/grok/technical", payload),

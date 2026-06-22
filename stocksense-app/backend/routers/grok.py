@@ -3,7 +3,7 @@ agar tidak cepat kena rate limit free tier."""
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
-import httpx, os, json
+import httpx, os, json, threading
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,11 +18,85 @@ MODEL_NEWS       = "llama-3.3-70b-versatile"               # berbeda bucket rate
 MODEL_FINAL_RECO = "llama-3.3-70b-versatile"   # paling capable, pakai seperlunya
 
 
+# ── Pool API key + rotasi (round-robin) + fallback otomatis ─────────
+# Sumber key digabung dengan urutan: list koma → bernomor → tunggal.
+#   GROQ_API_KEYS  = "gsk_a,gsk_b,gsk_c"          (dipisah koma)
+#   GROQ_API_KEY_1 = gsk_a / GROQ_API_KEY_2 = ... (bernomor)
+#   GROQ_API_KEY   = gsk_a                        (tunggal, kompatibel lama)
+def get_key_pool() -> list:
+    keys = []
+    multi = os.getenv("GROQ_API_KEYS", "")
+    if multi:
+        keys += [k.strip() for k in multi.split(",")]
+    i = 1
+    while True:
+        k = os.getenv(f"GROQ_API_KEY_{i}", "").strip()
+        if not k:
+            break
+        keys.append(k)
+        i += 1
+    single = os.getenv("GROQ_API_KEY", "").strip()
+    if single:
+        keys.append(single)
+    # dedupe sambil pertahankan urutan
+    seen, out = set(), []
+    for k in keys:
+        if k and k not in seen:
+            seen.add(k)
+            out.append(k)
+    return out
+
+
+_rr_lock = threading.Lock()
+_rr_index = 0
+
+
+def _next_start(n: int) -> int:
+    """Round-robin: tiap pemanggilan dimulai dari key giliran berikutnya."""
+    global _rr_index
+    with _rr_lock:
+        idx = _rr_index % n
+        _rr_index = (_rr_index + 1) % n
+    return idx
+
+
 def get_key(req_key: Optional[str]) -> str:
-    key = req_key or os.getenv("GROQ_API_KEY", "")
-    if not key:
-        raise HTTPException(400, "Groq API key tidak ditemukan. Isi di tombol 'Groq API Key' atau set GROQ_API_KEY di .env")
-    return key
+    """Kompatibilitas lama: 1 key (req override, atau key pertama dari pool)."""
+    if req_key:
+        return req_key
+    pool = get_key_pool()
+    if not pool:
+        raise HTTPException(400, "Groq API key tidak ditemukan. Set GROQ_API_KEY atau GROQ_API_KEYS di .env, atau isi via tombol 'Groq API Key'.")
+    return pool[0]
+
+
+# Status code yang berarti "coba key lain" (limit / key bermasalah / server).
+_ROTATE_CODES = {429, 401, 403, 408, 500, 502, 503, 504}
+
+
+async def groq_chat_rotate(messages: list, model: str, max_tokens: int = 700, api_key: Optional[str] = None) -> dict:
+    """
+    Panggil Groq dengan rotasi key. Bila req mengirim api_key eksplisit, pakai
+    key itu saja. Selain itu pakai seluruh pool: mulai dari key giliran
+    berikutnya (round-robin); bila kena 429/limit otomatis lanjut ke key lain.
+    Error hanya dilempar bila SEMUA key gagal.
+    """
+    pool = [api_key.strip()] if api_key else get_key_pool()
+    if not pool:
+        raise HTTPException(400, "Groq API key tidak ditemukan. Set GROQ_API_KEY atau GROQ_API_KEYS di .env, atau isi via tombol 'Groq API Key'.")
+    n = len(pool)
+    start = _next_start(n)
+    last_detail = ""
+    for offset in range(n):
+        key = pool[(start + offset) % n]
+        try:
+            return await groq_chat(messages, key, model, max_tokens)
+        except HTTPException as e:
+            last_detail = str(e.detail)
+            if e.status_code in _ROTATE_CODES:
+                continue          # key ini limit/bermasalah → coba key berikutnya
+            raise                 # error lain (mis. 400 prompt) → langsung lempar
+    raise HTTPException(429, f"Semua {n} Groq API key kena limit atau gagal. Terakhir: {last_detail[:200]}")
 
 
 async def groq_chat(messages: list, api_key: str, model: str, max_tokens: int = 700) -> dict:
@@ -77,7 +151,7 @@ Balas HANYA JSON valid ini tanpa teks lain (ganti semua angka dengan estimasi ny
   "confidence": 0.82,
   "reasons": ["r1","r2","r3"],
   "summary": "<2 kalimat>"}}"""
-    res  = await groq_chat([{"role":"user","content":prompt}], key, MODEL_TECHNICAL, max_tokens=700)
+    res  = await groq_chat_rotate([{"role":"user","content":prompt}], MODEL_TECHNICAL, max_tokens=700, api_key=req.api_key)
     data = parse_json(res["choices"][0]["message"]["content"])
     return {"ticker": req.ticker, "source": "groq_technical", **data}
 
@@ -105,7 +179,7 @@ SENTIMEN: Positif {s.get('positive_pct',0)}% | Netral {s.get('neutral_pct',0)}% 
 
 Balas HANYA JSON valid ini tanpa teks lain:
 {{"main_theme":"<1 kalimat>","summary":"<2-3 kalimat>","sentiment_direction":"Bullish"|"Bearish"|"Netral","key_factors":["f1","f2","f3"],"news_recommendation":"BUY"|"SELL"|"HOLD","news_confidence":<0.0-1.0>}}"""
-    res  = await groq_chat([{"role":"user","content":prompt}], key, MODEL_NEWS, max_tokens=400)
+    res  = await groq_chat_rotate([{"role":"user","content":prompt}], MODEL_NEWS, max_tokens=400, api_key=req.api_key)
     data = parse_json(res["choices"][0]["message"]["content"])
     return {"ticker": req.ticker, "source": "groq_news", **data}
 
@@ -150,6 +224,6 @@ SINYAL BERITA: {gn.get('news_recommendation','?')} conf {round(gn.get('news_conf
 
 Balas HANYA JSON valid ini tanpa teks lain (ganti angka-angka dengan nilai nyatanya, bukan string):
 {{"final_recommendation":"BUY"|"SELL"|"HOLD","overall_confidence":0.85,"signal_agreement":"Sepakat"|"Mayoritas"|"Bertentangan","entry_price": 5000,"stop_loss": 4800,"take_profit_1": 5300,"take_profit_2": 5500,"risk_reward_ratio": 2.5,"summary":"<2 kalimat>"}}"""
-    res  = await groq_chat([{"role":"user","content":prompt}], key, MODEL_FINAL_RECO, max_tokens=400)
+    res  = await groq_chat_rotate([{"role":"user","content":prompt}], MODEL_FINAL_RECO, max_tokens=400, api_key=req.api_key)
     data = parse_json(res["choices"][0]["message"]["content"])
     return {"ticker": req.ticker, **data}

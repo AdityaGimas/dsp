@@ -11,7 +11,7 @@ import os
 import asyncio
 import httpx
 from dotenv import load_dotenv
-from .grok import groq_chat, get_key, parse_json
+from .grok import groq_chat, groq_chat_rotate, get_key, parse_json
 
 load_dotenv()
 
@@ -148,9 +148,9 @@ Berita:
 
     try:
         from .grok import MODEL_NEWS
-        res  = await groq_chat(
-            [{"role": "user", "content": prompt}], key,
-            model=MODEL_NEWS, max_tokens=2000
+        res  = await groq_chat_rotate(
+            [{"role": "user", "content": prompt}],
+            model=MODEL_NEWS, max_tokens=2000, api_key=api_key
         )
         content = res["choices"][0]["message"]["content"]
         # Cari block JSON jika ada teks tambahan

@@ -57,12 +57,10 @@ export default function IndikatorTeknikal() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState("")
 
-  useEffect(() => {
-    let alive = true
+  const load = (refresh = false) => {
     setBusy(true)
     setErr("")
-    Promise.allSettled([api.getIndicators(currentTicker), api.getStockInfo(currentTicker)]).then(([i, f]) => {
-      if (!alive) return
+    Promise.allSettled([api.getIndicators(currentTicker, refresh), api.getStockInfo(currentTicker, refresh)]).then(([i, f]) => {
       if (i.status === "fulfilled" && i.value && i.value.rsi) setInd(i.value)
       else {
         setInd(null)
@@ -71,9 +69,11 @@ export default function IndikatorTeknikal() {
       setInfo(f.status === "fulfilled" ? f.value : null)
       setBusy(false)
     })
-    return () => {
-      alive = false
-    }
+  }
+
+  useEffect(() => {
+    load(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTicker])
 
   const rsi = ind?.rsi
@@ -129,7 +129,7 @@ export default function IndikatorTeknikal() {
   return (
     <>
       <TickerSearchBar label="Indikator Teknikal">
-        <button className={"fetch-news-btn " + (busy ? "loading" : "")} disabled={busy}>
+        <button className={"fetch-news-btn " + (busy ? "loading" : "")} onClick={() => load(true)} disabled={busy}>
           <span className="spin-sm" />
           <span className="btn-txt">{busy ? "Memuat..." : "↻ Refresh"}</span>
         </button>

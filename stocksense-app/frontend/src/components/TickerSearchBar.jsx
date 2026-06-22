@@ -2,7 +2,7 @@ import { useState, useEffect } from "react"
 import { useApp } from "../context/AppContext.jsx"
 
 // Shared search bar: ticker input + watchlist quick chips.
-export default function TickerSearchBar({ label = "Pilih Saham" }) {
+export default function TickerSearchBar({ label = "Pilih Saham", children }) {
   const { currentTicker, setCurrentTicker, watchlist, removeFromWatchlist } = useApp()
   const [input, setInput] = useState(currentTicker)
 
@@ -21,6 +21,9 @@ export default function TickerSearchBar({ label = "Pilih Saham" }) {
     fontStyle: "italic",
     alignSelf: "center",
   }
+
+  // Slot aksi di sisi kanan search bar (mis. tombol Refresh / Ambil Berita).
+  const actions = { marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }
 
   return (
     <div className="search-bar">
@@ -61,6 +64,11 @@ export default function TickerSearchBar({ label = "Pilih Saham" }) {
           })
         )}
       </div>
+      {children ? (
+        <div className="search-actions" style={actions}>
+          {children}
+        </div>
+      ) : null}
     </div>
   )
 }

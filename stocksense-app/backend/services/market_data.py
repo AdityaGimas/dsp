@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import ta
 
+from .cache import ttl_cache
+
 # Daftar 45 saham LQ45 (suffix .JK untuk IDX)
 LQ45_TICKERS = [
     "ACES.JK", "ADRO.JK", "AMRT.JK", "ANTM.JK", "ASII.JK",
@@ -36,6 +38,7 @@ LQ45_NAMES = {
 }
 
 
+@ttl_cache(3600)  # daftar statis, cache 1 jam
 def get_stock_list():
     """Kembalikan daftar saham LQ45 beserta info singkat."""
     result = []
@@ -49,6 +52,7 @@ def get_stock_list():
     return result
 
 
+@ttl_cache(300)  # cache 5 menit per ticker
 def get_stock_info(ticker: str):
     """Ambil info lengkap saham: harga terkini, market cap, dll."""
     t = yf.Ticker(ticker)
@@ -81,6 +85,7 @@ def get_stock_info(ticker: str):
     }
 
 
+@ttl_cache(600)  # cache 10 menit per (ticker, period)
 def get_stock_history(ticker: str, period: str = "6mo"):
     """
     Ambil data historis OHLCV.
@@ -104,6 +109,7 @@ def get_stock_history(ticker: str, period: str = "6mo"):
     return records
 
 
+@ttl_cache(600)  # cache 10 menit per ticker
 def get_technical_indicators(ticker: str):
     """Hitung indikator teknikal dari data historis."""
     t = yf.Ticker(ticker)
