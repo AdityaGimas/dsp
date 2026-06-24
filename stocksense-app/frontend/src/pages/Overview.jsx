@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Line } from "react-chartjs-2"
+import { Line, Bar } from "react-chartjs-2"
 import { useApp } from "../context/AppContext.jsx"
 import { api } from "../api/client.js"
 import TickerSearchBar from "../components/TickerSearchBar.jsx"
@@ -73,6 +73,23 @@ const CAT_LABELS = {
   geopolitics:"🌍 Geopolitik",
 }
 
+// ── MA helpers (module-level, stable ref) ─────────────────────────────
+function calcMA(data, n) {
+  return data.map((_, i) => {
+    if (i < n - 1) return null
+    const slice = data.slice(i - n + 1, i + 1)
+    const sum = slice.reduce((a, b) => a + (b ?? 0), 0)
+    return parseFloat((sum / n).toFixed(2))
+  })
+}
+
+const MA_COLORS = {
+  7:   { color: "#facc15", label: "MA 7" },
+  20:  { color: "#f97316", label: "MA 20" },
+  50:  { color: "#a78bfa", label: "MA 50" },
+  200: { color: "#f43f5e", label: "MA 200" },
+}
+
 
 export default function Overview() {
   const { currentTicker } = useApp()
@@ -80,6 +97,8 @@ export default function Overview() {
   const [info, setInfo] = useState(null)
   const [hist, setHist] = useState([])
   const [period, setPeriod] = useState("3mo")
+  const [maPeriods, setMaPeriods] = useState([20, 50])
+  const [volumeMaPeriod, setVolumeMaPeriod] = useState(20)
   const [indicators, setIndicators] = useState(null)
   const [mlPred, setMlPred] = useState(null)
   const [groqTech, setGroqTech] = useState(null)
@@ -388,6 +407,24 @@ export default function Overview() {
       }
     ]
 
+    // ── MA datasets ────────────────────────────────────────────────
+    maPeriods.forEach((p) => {
+      const maData = calcMA(closes, p)
+      const meta = MA_COLORS[p] || { color: "#888", label: `MA ${p}` }
+      datasets.push({
+        label: meta.label,
+        data: [...maData, ...padPred],
+        borderColor: meta.color,
+        borderWidth: 1.5,
+        pointRadius: 0,
+        pointHoverRadius: 3,
+        tension: 0.3,
+        fill: false,
+        borderDash: [],
+        _isMA: true,
+      })
+    })
+
     if (predDates.length && Number.isFinite(lastClose)) {
       const mlPreds3 = mlPred.predictions.slice(0, 3)
       const mlConnector = Array(histLen).fill(null)
@@ -442,7 +479,99 @@ export default function Overview() {
       }
     }
     return { labels, datasets }
-  }, [hist, mlPred, groqTech])
+  }, [hist, mlPred, groqTech, maPeriods])
+
+  // ── Volume chart data ───────────────────────────────────────────────
+  const volumeChartData = useMemo(() => {
+    if (!hist.length) return { labels: [], datasets: [] }
+    const labels = hist.map((r) => r.date)
+    const volumes = hist.map((r) => r.volume ?? 0)
+    const volMA = calcMA(volumes, volumeMaPeriod)
+    const closes = hist.map((r) => r.close)
+
+    // Warna bar: hijau jika close naik, merah jika turun
+    const barColors = hist.map((r, i) => {
+      const prev = i > 0 ? closes[i - 1] : r.close
+      return r.close >= prev ? "rgba(45,212,160,0.6)" : "rgba(248,113,113,0.6)"
+    })
+    const barBorders = hist.map((r, i) => {
+      const prev = i > 0 ? closes[i - 1] : r.close
+      return r.close >= prev ? "rgba(45,212,160,0.9)" : "rgba(248,113,113,0.9)"
+    })
+
+    return {
+      labels,
+      datasets: [
+        {
+          type: "bar",
+          label: "Volume",
+          data: volumes,
+          backgroundColor: barColors,
+          borderColor: barBorders,
+          borderWidth: 1,
+          borderRadius: 2,
+          order: 2,
+        },
+        {
+          type: "line",
+          label: `MA Vol ${volumeMaPeriod}`,
+          data: volMA,
+          borderColor: "#facc15",
+          borderWidth: 1.5,
+          pointRadius: 0,
+          pointHoverRadius: 3,
+          tension: 0.3,
+          fill: false,
+          order: 1,
+        },
+      ],
+    }
+  }, [hist, volumeMaPeriod])
+
+  const volumeChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: "#1c2028",
+        borderColor: "rgba(255,255,255,0.08)",
+        borderWidth: 1,
+        titleColor: "#8a8f9e",
+        bodyColor: "#e8eaf0",
+        padding: 10,
+        callbacks: {
+          label: (c) => {
+            const v = c.parsed.y
+            if (v === null || v === undefined) return null
+            return ` ${c.dataset.label}: ${Number(v).toLocaleString("id-ID")}`
+          },
+        },
+      },
+    },
+    scales: {
+      x: {
+        grid: { color: "rgba(255,255,255,0.04)" },
+        ticks: { color: "#505568", font: { size: 10 }, maxTicksLimit: 8 },
+        border: { display: false },
+      },
+      y: {
+        grid: { color: "rgba(255,255,255,0.04)" },
+        ticks: {
+          color: "#505568",
+          font: { size: 10 },
+          callback: (v) => {
+            if (v >= 1e9) return (v / 1e9).toFixed(1) + "M"
+            if (v >= 1e6) return (v / 1e6).toFixed(1) + "Jt"
+            if (v >= 1e3) return (v / 1e3).toFixed(0) + "Rb"
+            return v
+          },
+        },
+        border: { display: false },
+      },
+    },
+    interaction: { mode: "index", intersect: false },
+  }
 
   const chartOptions = {
     responsive: true,
@@ -672,26 +801,84 @@ export default function Overview() {
             <div className="card">
               <div className="card-header">
                 <div className="card-title">📈 Harga Historis & Prediksi — {code}</div>
-                <div className="tab-group">
-                  {periods.map((p) => (
-                    <span
-                      key={p.id}
-                      className={"tab " + (period === p.id ? "active-tab" : "")}
-                      onClick={() => setPeriod(p.id)}
-                    >
-                      {p.lbl}
-                    </span>
-                  ))}
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <div className="tab-group">
+                    {periods.map((p) => (
+                      <span
+                        key={p.id}
+                        className={"tab " + (period === p.id ? "active-tab" : "")}
+                        onClick={() => setPeriod(p.id)}
+                      >
+                        {p.lbl}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
-              <div className="chart-legend">
+              {/* ── MA Selector ── */}
+              <div className="chart-legend" style={{ flexWrap: "wrap", gap: "8px 16px" }}>
                 <span className="leg-item"><span className="leg-line" style={S.legSolidBlue} />Historis</span>
                 <span className="leg-item"><span className="leg-line" style={{ background: "#2dd4a0", borderTop: "2px dashed #2dd4a0", height: 0 }} />XGBoost</span>
                 <span className="leg-item"><span className="leg-line" style={S.legDashPurple} />LLM</span>
+                <span style={{ color: "var(--text-muted)", fontSize: 10, marginLeft: 4 }}>|</span>
+                {[7, 20, 50, 200].map((p) => {
+                  const active = maPeriods.includes(p)
+                  const meta = MA_COLORS[p]
+                  return (
+                    <span
+                      key={p}
+                      className="leg-item"
+                      onClick={() => setMaPeriods(prev =>
+                        prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
+                      )}
+                      style={{
+                        cursor: "pointer",
+                        opacity: active ? 1 : 0.35,
+                        userSelect: "none",
+                        transition: "opacity 0.2s",
+                      }}
+                      title={`${active ? "Sembunyikan" : "Tampilkan"} MA ${p}`}
+                    >
+                      <span className="leg-line" style={{ background: meta.color }} />
+                      {meta.label}
+                    </span>
+                  )
+                })}
               </div>
               <div className="card-body">
                 <div className="chart-wrap">
                   <Line data={chartData} options={chartOptions} plugins={[ovRangeBandPlugin]} />
+                </div>
+              </div>
+            </div>
+
+            {/* ── Volume Chart ── */}
+            <div className="card">
+              <div className="card-header">
+                <div className="card-title">📊 Volume & Rata-Rata Volume</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>MA Vol:</span>
+                  <div className="tab-group">
+                    {[5, 10, 20, 50].map((p) => (
+                      <span
+                        key={p}
+                        className={"tab " + (volumeMaPeriod === p ? "active-tab" : "")}
+                        onClick={() => setVolumeMaPeriod(p)}
+                      >
+                        {p}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="chart-legend">
+                <span className="leg-item"><span className="leg-line" style={{ background: "rgba(45,212,160,0.9)" }} />Vol Naik</span>
+                <span className="leg-item"><span className="leg-line" style={{ background: "rgba(248,113,113,0.9)" }} />Vol Turun</span>
+                <span className="leg-item"><span className="leg-line" style={{ background: "#facc15" }} />MA Vol {volumeMaPeriod}</span>
+              </div>
+              <div className="card-body">
+                <div className="chart-wrap" style={{ height: 140 }}>
+                  <Bar data={volumeChartData} options={volumeChartOptions} />
                 </div>
               </div>
             </div>
