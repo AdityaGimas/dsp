@@ -31,7 +31,7 @@ const S = {
   redV: { color: "var(--red)" },
   greenV: { color: "var(--green)" },
   mutedV: { color: "var(--text-muted)" },
-  kpiGrid: { gridTemplateColumns: "repeat(5,1fr)" },
+  kpiGrid: { gridTemplateColumns: "repeat(4,1fr)" },
   gridFull: { gridColumn: "1/-1" },
   pad10: { padding: "10px 0" },
   mt4: { marginTop: 4 },
@@ -63,14 +63,14 @@ const S = {
 
 const SENT_META = {
   positive: { cls: "esb-pos", label: "Positif", short: "POS" },
-  neutral:  { cls: "esb-neu", label: "Netral",  short: "NTR" },
+  neutral: { cls: "esb-neu", label: "Netral", short: "NTR" },
   negative: { cls: "esb-neg", label: "Negatif", short: "NEG" },
 }
 
 const CAT_LABELS = {
-  market:     "📈 Pasar",
-  macro:      "🏦 Makro Ekonomi",
-  geopolitics:"🌍 Geopolitik",
+  market: "📈 Pasar",
+  macro: "🏦 Makro Ekonomi",
+  geopolitics: "🌍 Geopolitik",
 }
 
 // ── MA helpers (module-level, stable ref) ─────────────────────────────
@@ -94,19 +94,19 @@ function calcMA(data, n) {
 }
 
 const MA_COLORS = {
-  5:   { color: "#facc15", label: "MA 5" },
-  20:  { color: "#f97316", label: "MA 20" },
-  50:  { color: "#22d3ee", label: "MA 50" },
+  5: { color: "#facc15", label: "MA 5" },
+  20: { color: "#f97316", label: "MA 20" },
+  50: { color: "#22d3ee", label: "MA 50" },
 }
 
 
 export default function Overview() {
-  const { currentTicker } = useApp()
+  const { currentTicker, refreshTrigger, isRefreshing, setIsRefreshing } = useApp()
 
   const [info, setInfo] = useState(null)
   const [hist, setHist] = useState([])
   const [period, setPeriod] = useState("3mo")
-  const [maPeriods, setMaPeriods] = useState([20, 50])
+  const [maPeriods, setMaPeriods] = useState([])
   const [volumeMaPeriod, setVolumeMaPeriod] = useState(20)
   const [indicators, setIndicators] = useState(null)
   const [mlPred, setMlPred] = useState(null)
@@ -124,7 +124,12 @@ export default function Overview() {
   const [newsErr, setNewsErr] = useState("")
   const [groqTechTs, setGroqTechTs] = useState(null)
   const [newsTs, setNewsTs] = useState(null)
-  const [refreshing, setRefreshing] = useState(false)
+
+  useEffect(() => {
+    if (refreshTrigger > 0) {
+      refreshAll()
+    }
+  }, [refreshTrigger])
 
   const code = currentTicker.replace(".JK", "")
 
@@ -199,7 +204,7 @@ export default function Overview() {
   // chart, makro) dengan menembus cache server (refresh=true).
   function refreshAll() {
     const t = currentTicker
-    setRefreshing(true)
+    setIsRefreshing(true)
     Promise.allSettled([
       api.getStockInfo(t, true),
       api.getIndicators(t, true),
@@ -215,8 +220,10 @@ export default function Overview() {
       }
       setHist(h.status === "fulfilled" && h.value.data && h.value.data.length ? h.value.data : [])
       if (mac.status === "fulfilled") setMacroData(mac.value.data)
-      setRefreshing(false)
+      setIsRefreshing(false)
     })
+    fetchNews()
+    runGroqTechnical()
   }
 
   async function runGroqTechnical() {
@@ -257,8 +264,8 @@ export default function Overview() {
       const sentData = await api.predictSentiment(
         currentTicker,
         newsData.articles.map((a) => ({
-          title:    a.title,
-          content:  a.content || "",
+          title: a.title,
+          content: a.content || "",
           category: a.category || "market",
         })),
       )
@@ -266,13 +273,13 @@ export default function Overview() {
       // 3. Merge hasil sentimen ke artikel
       const merged = newsData.articles.map((a, i) => ({
         ...a,
-        category:       sentData.results[i]?.category    || a.category || "market",
-        sentiment:      sentData.results[i]?.sentiment   || "neutral",
-        sentiment_label:sentData.results[i]?.label       || "Netral",
-        score:          sentData.results[i]?.score       ?? 0,
-        llm_sentiment:  sentData.results[i]?.llm_sentiment || "neutral",
-        llm_label:      sentData.results[i]?.llm_label   || "Netral",
-        llm_score:      sentData.results[i]?.llm_score   ?? 0,
+        category: sentData.results[i]?.category || a.category || "market",
+        sentiment: sentData.results[i]?.sentiment || "neutral",
+        sentiment_label: sentData.results[i]?.label || "Netral",
+        score: sentData.results[i]?.score ?? 0,
+        llm_sentiment: sentData.results[i]?.llm_sentiment || "neutral",
+        llm_label: sentData.results[i]?.llm_label || "Netral",
+        llm_score: sentData.results[i]?.llm_score ?? 0,
       }))
 
       const ln = {
@@ -666,12 +673,7 @@ export default function Overview() {
 
   return (
     <>
-      <TickerSearchBar label="Pilih Saham">
-        <button className={"fetch-news-btn " + (refreshing ? "loading" : "")} onClick={refreshAll} disabled={refreshing}>
-          <span className="spin-sm" />
-          <span className="btn-txt">{refreshing ? "Memuat..." : "↻ Refresh"}</span>
-        </button>
-      </TickerSearchBar>
+      <TickerSearchBar label="Pilih Saham" />
 
       <div className="content">
         <div className="stock-header">
@@ -714,93 +716,50 @@ export default function Overview() {
             </div>
           </div>
         </div>
-        
+
 
         <div className="kpi-grid" style={S.kpiGrid}>
+          {/* Card 1: Perbandingan Prediksi XGBoost & LLM Besok */}
           <div className="kpi-card kpi-c-blue">
-            <div className="kpi-label">Momentum (RSI 14)</div>
-            <div className="kpi-val" style={indicators?.rsi ? { color: indColor(indicators.rsi.signal) } : S.blueTxt}>
-              {indicators?.rsi?.value ? indicators.rsi.value.toFixed(1) : "—"}
+            <div className="kpi-label">Prediksi XGB vs LLM (Besok)</div>
+            <div className="kpi-val" style={mlPred && groqTech ? (mlPred.recommendation === groqTech.recommendation ? S.greenTxt : S.amberTxt) : S.blueTxt}>
+              {mlPred && groqTech ? (mlPred.recommendation === groqTech.recommendation ? recLabel(mlPred.recommendation) : `XGB: ${recLabel(mlPred.recommendation)} | LLM: ${recLabel(groqTech.recommendation)}`) : "Menunggu..."}
             </div>
             <div className="kpi-sub">
-              Status: {indicators?.rsi?.signal ? indicators.rsi.signal.toUpperCase() : "Menunggu..."}
+              {mlPred && groqTech ? (mlPred.recommendation === groqTech.recommendation ? "XGBoost & LLM sepakat" : "Sinyal prediksi berbeda") : "—"}
             </div>
           </div>
-          <div className="kpi-card kpi-c-blue">
-            <div className="kpi-label">Prediksi Besok (ML)</div>
-            <div className="kpi-val" style={S.blueTxt}>{mlFirst ? fmt(mlFirst.price) : "—"}</div>
-            <div className="kpi-sub">
-              {mlFirst ? (
-                <span style={predSubColor}>
-                  {(mlFirst.change_pct >= 0 ? "↑" : "↓") + " " + mlFirst.change_pct.toFixed(2) + "%"}
-                </span>
-              ) : (
-                "—"
-              )}{" "}
-              {mlFirst?.price_low && mlFirst?.price_high ? `(${fmt(mlFirst.price_low)}–${fmt(mlFirst.price_high)})` : ""}
-            </div>
-          </div>
+
+          {/* Card 2: Ringkasan Indikator Teknikal */}
           <div className="kpi-card kpi-c-purple">
-            <div className="kpi-label">Analisis LLM (3 Hari)</div>
-            <div className="kpi-val" style={grokKpiStyle}>
-              {groqTech ? recLabel(groqTech.recommendation) : groqTechBusy ? "..." : "—"}
+            <div className="kpi-label">Indikator Teknikal</div>
+            <div className="kpi-val" style={signalStyle}>
+              {ov.signal ? ov.signal.toUpperCase() : "Menunggu..."}
             </div>
             <div className="kpi-sub">
-              {groqTech
-                ? "Confidence: " + Math.round((groqTech.confidence || 0) * 100) + "%"
-                : groqTechErr || "Menunggu..."}
+              {indicators ? `RSI (${indicators.rsi?.signal || "-"}), MACD (${indicators.macd?.signal || "-"}), MA` : "—"}
             </div>
           </div>
+
+          {/* Card 3: Ringkasan Sentimen */}
           <div className="kpi-card kpi-c-teal">
-            <div className="kpi-label">Sentimen Berita</div>
-            <div className="kpi-val">
-              {news ? (
-                sentModel === "compare" ? (
-                  <span style={{ fontSize: 13, display: "flex", gap: 6, justifyContent: "center", alignItems: "center" }}>
-                    <span style={{ color: "var(--text-muted)", fontSize: 10 }}>HF:</span>
-                    <span style={sentColor1}>{sm.score || "—"}</span>
-                    <span style={{ color: "var(--border)" }}>|</span>
-                    <span style={{ color: "var(--text-muted)", fontSize: 10 }}>LLM:</span>
-                    <span style={sentColor2}>{llmSummary.score || "—"}</span>
-                  </span>
-                ) : (
-                  <span style={sentKpiStyle}>
-                    {((sentModel === "llm" ? llmSummary.score : sm.score) || "—") + "/100"}
-                  </span>
-                )
-              ) : "—"}
+            <div className="kpi-label">Berita dan Sentimen</div>
+            <div className="kpi-val" style={sentKpiStyle}>
+              {news ? (sentModel === "llm" ? llmSummary.overall_label : sm.overall_label).toUpperCase() : "Menunggu..."}
             </div>
             <div className="kpi-sub">
-              {news ? (
-                sentModel === "compare" ? (
-                  "Bandingkan Finetune & LLM"
-                ) : (
-                  sentModel === "llm" ? (
-                    `${llmSummary.positive} pos / ${llmSummary.neutral} netral / ${llmSummary.negative} neg`
-                  ) : (
-                    `${sm.positive || 0} pos / ${sm.neutral || 0} netral / ${sm.negative || 0} neg`
-                  )
-                )
-              ) : 'Klik "Ambil Berita"'}
+              {news ? `Skor: ${((sentModel === "llm" ? llmSummary.score : sm.score) || "0")}/100 (Dominasi ${(sentModel === "llm" ? llmSummary.overall_label : sm.overall_label).toLowerCase()})` : 'Klik "↻ Refresh"'}
             </div>
           </div>
+
+          {/* Card 4: Ringkasan Makro Ekonomi */}
           <div className="kpi-card kpi-c-amber">
-            <div className="kpi-label">Rasio Volume (20H)</div>
-            <div className="kpi-val" style={indicators?.volume_ratio ? { color: indColor(indicators.volume_ratio.value > 1.0 ? "bullish" : "bearish") } : S.amberTxt}>
-              {indicators?.volume_ratio?.value ? indicators.volume_ratio.value.toFixed(2) + "x" : "—"}
+            <div className="kpi-label">Makro Ekonomi</div>
+            <div className="kpi-val" style={macroData ? (macroData.IHSG?.change_pct > 0 ? S.greenTxt : S.redTxt) : S.blueTxt}>
+              {macroData ? (macroData.IHSG?.change_pct > 0 ? "KONDUSIF" : "BERHATI-HATI") : "Menunggu..."}
             </div>
             <div className="kpi-sub">
-              {indicators?.volume_ratio?.value ? (
-                indicators.volume_ratio.value > 1.5 ? (
-                  <span style={S.green}>Volume Sangat Tinggi</span>
-                ) : indicators.volume_ratio.value > 1.0 ? (
-                  <span style={S.green}>Volume Meningkat</span>
-                ) : (
-                  <span style={S.mutedV}>Volume Normal/Rendah</span>
-                )
-              ) : (
-                "Menunggu..."
-              )}
+              {macroData ? `IHSG ${macroData.IHSG?.change_pct > 0 ? "Naik" : "Turun"}, Rupiah ${macroData.USDIDR?.change_pct > 0 ? "Melemah" : "Menguat"}` : "—"}
             </div>
           </div>
         </div>
@@ -926,7 +885,7 @@ export default function Overview() {
                   <div className="card-title">🌍 Makro Ekonomi</div>
                 </div>
                 <div className="card-body">
-                  <div className="ind-grid">{renderMacroCards(macroData)}</div>
+                  <div className="macro-grid">{renderMacroCards(macroData)}</div>
                 </div>
               </div>
             )}
@@ -934,26 +893,9 @@ export default function Overview() {
             <div className="card">
               <div className="card-header">
                 <div className="card-title">🔮 Prediksi Teknikal — Perbandingan</div>
-                <div style={S.rowGap8}>
-                  <div className="tab-group">
-                    <span className="tab active-tab">7H</span>
-                    <span className="tab">14H</span>
-                    <span className="tab">30H</span>
-                  </div>
-                  <button
-                    className={"fetch-news-btn " + (groqTechBusy ? "loading" : "")}
-                    style={S.groqBtn}
-                    onClick={runGroqTechnical}
-                    disabled={groqTechBusy}
-                  >
-                    <span className="spin-sm" style={S.spinPurple} />
-                    <span className="btn-txt">{groqTechBusy ? "Menganalisis..." : "▶ Ulangi LLM"}</span>
-                  </button>
-                  <span className="analysis-time">{groqTechTs ? "⏱ " + fmtAge(groqTechTs) : ""}</span>
-                </div>
               </div>
               <div className="card-body">
-                <div className="dual-pred-grid">{renderDualPred(mlPred, groqTech, groqTechBusy)}</div>
+                <div className="dual-pred-grid">{renderDualPred(mlPred, groqTech, groqTechBusy, info)}</div>
                 {mlPred && groqTech ? renderAgree(mlPred, groqTech) : null}
                 <div className="pred-grid">{renderPredGrid(mlPred, groqTech, info)}</div>
               </div>
@@ -980,16 +922,6 @@ export default function Overview() {
             <div className="card">
               <div className="card-header">
                 <div className="card-title">🌐 Sentimen Berita</div>
-                <div style={S.rowGap6}>
-                  <button
-                    className={"fetch-news-btn " + (newsBusy ? "loading" : "")}
-                    onClick={fetchNews}
-                    disabled={newsBusy}
-                  >
-                    <span className="spin-sm" />
-                    <span className="btn-txt">↻ Ambil Berita</span>
-                  </button>
-                </div>
               </div>
               <div className="card-body">{renderSentiment(news, newsErr, newsBusy, aiSummary, sentModel, setSentModel, llmSummary)}</div>
             </div>
@@ -1024,23 +956,20 @@ function renderIndicators(d) {
   const macd = d.macd || {}
   const ma = d.moving_average || {}
   const items = [
-    { label: "RSI (14)", val: fmt(rsi.value, 1), sig: rsi.signal, pct: ((rsi.value || 0) / 100) * 100 },
-    { label: "MACD", val: (macd.value >= 0 ? "+" : "") + fmt(macd.value, 1), sig: macd.signal, pct: 70 },
-    { label: "MA 20 / MA 50", val: ma.golden_cross ? "Golden X" : "Death X", sig: ma.signal, pct: ma.golden_cross ? 85 : 30, small: true },
+    { label: "RSI (14)", val: fmt(rsi.value, 1), sig: rsi.signal, desc: "Mengukur momentum pergerakan harga" },
+    { label: "MACD", val: (macd.value >= 0 ? "+" : "") + fmt(macd.value, 1), sig: macd.signal, small: false, desc: "Menunjukkan arah dan kekuatan tren" },
+    { label: "MA 20 / MA 50", val: ma.golden_cross ? "Golden X" : "Death X", sig: ma.signal, small: true, desc: "Persilangan rata-rata 20 & 50 hari" },
   ]
   return items.map((item, i) => {
     const c = indColor(item.sig)
     const valStyle = item.small ? { color: c, fontSize: 13 } : { color: c }
     const sigStyle = { color: c }
-    const fillStyle = { width: item.pct + "%", background: c }
     return (
       <div className="ind-item" key={i}>
         <div className="ind-label">{item.label}</div>
         <div className="ind-val" style={valStyle}>{item.val}</div>
         <div className="ind-sig" style={sigStyle}>{item.sig || "—"}</div>
-        <div className="ind-track">
-          <div className="ind-fill" style={fillStyle} />
-        </div>
+        {item.desc && <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.3 }}>{item.desc}</div>}
       </div>
     )
   })
@@ -1055,33 +984,29 @@ function renderMacroCards(d) {
     { name: "USD/IDR", val: "Rp " + (d.USDIDR?.value?.toLocaleString("id-ID") || 0), sig: d.USDIDR?.change_pct > 0 ? "Melemah" : "Menguat", desc: "Nilai Tukar Rupiah", small: true },
     { name: "IHSG", val: d.IHSG?.value?.toLocaleString("id-ID") || 0, sig: d.IHSG?.change_pct > 0 ? "Bullish" : "Bearish", desc: "Indeks Harga Saham", small: true },
   ]
-  
+
   return cards.map((c, i) => {
     let sigVal = "Netral"
     if (c.name === "USD/IDR") sigVal = c.sig === "Menguat" ? "Beli" : "Jual"
     else if (c.name === "Inflasi (YoY)") sigVal = c.sig === "Turun" ? "Beli" : "Jual"
     else sigVal = (c.sig === "Naik" || c.sig === "Bullish") ? "Beli" : (c.sig === "Tetap" ? "Netral" : "Jual")
-    
+
     const col = indColor(sigVal)
     const valStyle = c.small ? { color: col, fontSize: 13 } : { color: col }
     const sigStyle = { color: col }
-    const pct = sigVal === "Beli" ? 80 : (sigVal === "Jual" ? 20 : 50)
-    const fillStyle = { width: pct + "%", background: col }
 
     return (
       <div className="ind-item" key={i}>
         <div className="ind-label">{c.name}</div>
         <div className="ind-val" style={valStyle}>{c.val}</div>
         <div className="ind-sig" style={sigStyle}>{c.sig || "—"}</div>
-        <div className="ind-track">
-          <div className="ind-fill" style={fillStyle} />
-        </div>
+        {c.desc && <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.3 }}>{c.desc}</div>}
       </div>
     )
   })
 }
 
-function renderDualPred(ml, grok, busy) {
+function renderDualPred(ml, grok, busy, info) {
   const mlRecStyle = ml ? { color: recColor(ml.recommendation) } : null
   const grokRecStyle = grok ? { color: recColor(grok.recommendation) } : null
   const reasonsStyle = { marginTop: 6, fontSize: 10, color: "var(--text-muted)", lineHeight: 1.5 }
@@ -1120,7 +1045,7 @@ function renderDualPred(ml, grok, busy) {
   const grokBody = grok ? (
     <>
       <div className="pred-src-badge badge-grok">✦ Prediksi LLM — 3 Hari</div>
-      <div className="pred-src-price" style={{fontSize: 20}}>
+      <div className="pred-src-price" style={{ fontSize: 20 }}>
         {fmt(grok.price_range_3d?.min || grok.price_tomorrow_low)} – {fmt(grok.price_range_3d?.max || grok.price_tomorrow_high)}
       </div>
       <span className="pred-src-chg" style={{ ...rangeStyle, padding: "2px 8px", borderRadius: 4, display: "inline-block", marginBottom: 8 }}>
@@ -1133,15 +1058,21 @@ function renderDualPred(ml, grok, busy) {
           { lbl: "H+1", price: grok.price_tomorrow, lo: grok.price_tomorrow_low, hi: grok.price_tomorrow_high },
           { lbl: "H+2", price: grok.day2_price, lo: grok.day2_low, hi: grok.day2_high },
           { lbl: "H+3", price: grok.day3_price, lo: grok.day3_low, hi: grok.day3_high },
-        ].filter(r => r.price).map((r, i) => (
-          <div className="pred-src-row" key={i}>
-            <span className="pred-src-k">{r.lbl}</span>
-            <span className="pred-src-v" style={{ color: "var(--purple)" }}>
-              {fmt(r.price)}&nbsp;
-              {r.lo && r.hi ? <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: 9 }}>({fmt(r.lo)}–{fmt(r.hi)})</span> : null}
-            </span>
-          </div>
-        ))}
+        ].filter(r => r.price).map((r, i) => {
+          let cColor = "var(--text-primary)";
+          if (info && info.current_price) {
+            cColor = r.price >= info.current_price ? "var(--green)" : "var(--red)";
+          }
+          return (
+            <div className="pred-src-row" key={i}>
+              <span className="pred-src-k">{r.lbl}</span>
+              <span className="pred-src-v" style={{ color: cColor }}>
+                {fmt(r.price)}&nbsp;
+                {r.lo && r.hi ? <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: 9 }}>({fmt(r.lo)}–{fmt(r.hi)})</span> : null}
+              </span>
+            </div>
+          )
+        })}
         <div style={reasonsStyle}>{(grok.reasons || []).map((r, i) => <div key={i}>{"• " + r}</div>)}</div>
       </div>
     </>
@@ -1193,18 +1124,57 @@ function renderPredGrid(ml, grok, info) {
       <div className="pred-chg" style={mutedChg}>—</div>
     </div>,
   ]
+  const grokPrices = grok ? [
+    { price: grok.price_tomorrow, lo: grok.price_tomorrow_low, hi: grok.price_tomorrow_high },
+    { price: grok.day2_price, lo: grok.day2_low, hi: grok.day2_high },
+    { price: grok.day3_price, lo: grok.day3_low, hi: grok.day3_high }
+  ] : []
+
   ml.predictions.slice(0, 6).forEach((p, i) => {
     const dt = new Date(p.date)
     const up = p.change_pct >= 0
     const chgStyle = { color: up ? "var(--green)" : "var(--red)" }
+
+    const gObj = grokPrices[i] || {}
+    const gPrice = gObj.price
+    let gChangePct = null
+    let gUp = false
+    let gChgStyle = {}
+    if (gPrice && info && info.current_price) {
+      gChangePct = ((gPrice - info.current_price) / info.current_price) * 100
+      gUp = gChangePct >= 0
+      gChgStyle = { color: gUp ? "var(--green)" : "var(--red)" }
+    }
+
     cells.push(
       <div className="pred-day" key={i}>
-        <div className="pred-date-lbl">{`${DAY_ID[dt.getDay()]} ${dt.getDate()} ${MON_ID[dt.getMonth()]}`}</div>
-        <div style={gap} />
-        <div className="pred-price">{fmt(p.price)}</div>
-        <div className="pred-chg" style={chgStyle}>{(up ? "+" : "") + p.change_pct.toFixed(2) + "%"}</div>
-        <div className="pred-conf">{"XGB " + Math.round(p.confidence * 100) + "%"}</div>
-        {i === 0 && grok ? <div className="pred-grok-price">{"LLM: " + fmt(grok.price_tomorrow)}</div> : null}
+        <div className="pred-date-lbl" style={{ marginBottom: 8 }}>{`${DAY_ID[dt.getDay()]} ${dt.getDate()} ${MON_ID[dt.getMonth()]}`}</div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ flex: 1, textAlign: "center" }}>
+            <div style={{ fontSize: 9, color: "#fff", marginBottom: 2 }}>XGB</div>
+            <div className="pred-price" style={{ color: "#fff" }}>{fmt(p.price)}</div>
+            {p.price_low && p.price_high && (
+              <div style={{ fontSize: 9, color: "var(--text-muted)", marginBottom: 2 }}>
+                ({fmt(p.price_low)}–{fmt(p.price_high)})
+              </div>
+            )}
+            <div className="pred-chg" style={chgStyle}>{(up ? "+" : "") + p.change_pct.toFixed(2) + "%"}</div>
+          </div>
+
+          {gPrice ? (
+            <div style={{ flex: 1, textAlign: "center", borderLeft: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 9, color: "var(--purple)", marginBottom: 2 }}>LLM</div>
+              <div className="pred-price" style={{ color: "#fff" }}>{fmt(gPrice)}</div>
+              {gObj.lo && gObj.hi && (
+                <div style={{ fontSize: 9, color: "var(--text-muted)", marginBottom: 2 }}>
+                  ({fmt(gObj.lo)}–{fmt(gObj.hi)})
+                </div>
+              )}
+              <div className="pred-chg" style={gChgStyle}>{(gUp ? "+" : "") + gChangePct.toFixed(2) + "%"}</div>
+            </div>
+          ) : null}
+        </div>
       </div>,
     )
   })
@@ -1256,7 +1226,7 @@ function renderFinalReco(ml, grok, news, apiRes, busy, onGenerate) {
             </div>
           ))}
         </div>
-        
+
         <button className="reco-empty-gen-btn" onClick={onGenerate}>
           ✨ Minta AI Putuskan
         </button>
@@ -1282,16 +1252,16 @@ function renderFinalReco(ml, grok, news, apiRes, busy, onGenerate) {
   const mlConf = ml.confidence || 0.5
 
   if (apiRes && apiRes.final_recommendation) {
-    finalRec        = apiRes.final_recommendation
-    finalConf       = Math.round((apiRes.overall_confidence || 0.5) * 100)
-    stopLoss        = apiRes.stop_loss || 0
-    entry           = apiRes.entry_price || 0
-    target          = apiRes.take_profit_1 || 0
-    target2         = apiRes.take_profit_2 || 0
-    rrRatio         = apiRes.risk_reward_ratio || 0
+    finalRec = apiRes.final_recommendation
+    finalConf = Math.round((apiRes.overall_confidence || 0.5) * 100)
+    stopLoss = apiRes.stop_loss || 0
+    entry = apiRes.entry_price || 0
+    target = apiRes.take_profit_1 || 0
+    target2 = apiRes.take_profit_2 || 0
+    rrRatio = apiRes.risk_reward_ratio || 0
     signalAgreement = apiRes.signal_agreement || "—"
-    summaryText     = apiRes.summary || ""
-    factors         = apiRes.factor_analysis || []
+    summaryText = apiRes.summary || ""
+    factors = apiRes.factor_analysis || []
   } else {
     let totalWeight = 0
     let weighted = 0
@@ -1310,20 +1280,20 @@ function renderFinalReco(ml, grok, news, apiRes, busy, onGenerate) {
       totalWeight += 0.25
     }
     const norm = totalWeight > 0 ? weighted / totalWeight : 0
-    finalRec  = norm > 0.15 ? "BUY" : norm < -0.15 ? "SELL" : "HOLD"
+    finalRec = norm > 0.15 ? "BUY" : norm < -0.15 ? "SELL" : "HOLD"
     finalConf = Math.round(Math.min(Math.abs(norm) * 100 + 50, 95))
     const curRaw = ml.entry || ml.predictions?.[0]?.price || 0
     stopLoss = ml.stop_loss || Math.round(curRaw * (finalRec === "BUY" ? 0.95 : 1.05))
-    entry    = ml.entry || curRaw
-    target   = ml.target || grok?.price_max_5d || grok?.price_range_5d?.max || Math.round(curRaw * (finalRec === "BUY" ? 1.06 : 0.94))
+    entry = ml.entry || curRaw
+    target = ml.target || grok?.price_max_5d || grok?.price_range_5d?.max || Math.round(curRaw * (finalRec === "BUY" ? 1.06 : 0.94))
   }
 
-  const dotClass     = finalRec === "BUY" ? "buy" : finalRec === "SELL" ? "sell" : "hold"
-  const color        = recColor(finalRec)
-  const colorStyle   = { color }
-  const redV         = { color: "var(--red)" }
-  const blueV        = { color: "var(--blue)" }
-  const greenV       = { color: "var(--green)" }
+  const dotClass = finalRec === "BUY" ? "buy" : finalRec === "SELL" ? "sell" : "hold"
+  const color = recColor(finalRec)
+  const colorStyle = { color }
+  const redV = { color: "var(--red)" }
+  const blueV = { color: "var(--blue)" }
+  const greenV = { color: "var(--green)" }
   const summaryStyle = { color: "var(--purple)" }
   const sources = [`XGBoost (${Math.round(mlConf * 100)}%)`]
   if (grok) sources.push(`LLM Langsung (${Math.round((grok.confidence || 0) * 100)}%)`)
@@ -1377,11 +1347,11 @@ function renderFinalReco(ml, grok, news, apiRes, busy, onGenerate) {
           </div>
           <div className="factor-list">
             {factors.map((f, idx) => {
-              const fColor   = f.signal === "BUY" ? "var(--green)" : f.signal === "SELL" ? "var(--red)" : "var(--amber)"
-              const fBg      = f.signal === "BUY" ? "rgba(45,212,160,0.12)" : f.signal === "SELL" ? "rgba(245,94,94,0.12)" : "rgba(245,183,49,0.12)"
-              const fBorder  = f.signal === "BUY" ? "rgba(45,212,160,0.25)" : f.signal === "SELL" ? "rgba(245,94,94,0.25)" : "rgba(245,183,49,0.25)"
-              const scoreW   = Math.min(Math.max(f.score || 0, 0), 100)
-              const weightW  = Math.min(Math.max(f.weight || 0, 0), 100)
+              const fColor = f.signal === "BUY" ? "var(--green)" : f.signal === "SELL" ? "var(--red)" : "var(--amber)"
+              const fBg = f.signal === "BUY" ? "rgba(45,212,160,0.12)" : f.signal === "SELL" ? "rgba(245,94,94,0.12)" : "rgba(245,183,49,0.12)"
+              const fBorder = f.signal === "BUY" ? "rgba(45,212,160,0.25)" : f.signal === "SELL" ? "rgba(245,94,94,0.25)" : "rgba(245,183,49,0.25)"
+              const scoreW = Math.min(Math.max(f.score || 0, 0), 100)
+              const weightW = Math.min(Math.max(f.weight || 0, 0), 100)
               const sigLabel = f.signal === "BUY" ? "BELI" : f.signal === "SELL" ? "JUAL" : "TAHAN"
               return (
                 <div className="factor-item" key={idx} style={{ borderLeft: `3px solid ${fBorder}` }}>
@@ -1485,12 +1455,12 @@ function renderSentiment(news, err, busy, aiSummary, sentModel, setSentModel, ll
         style={{ flex: 1, textAlign: "center", fontSize: 10, padding: "4px 0" }}
         className={`tab ${sentModel === "compare" ? "active-tab" : ""}`}
         onClick={() => setSentModel("compare")}
-      >Bandingkan</span>
+      >Overview</span>
       <span
         style={{ flex: 1, textAlign: "center", fontSize: 10, padding: "4px 0" }}
         className={`tab ${sentModel === "finetune" ? "active-tab" : ""}`}
         onClick={() => setSentModel("finetune")}
-      >Finetune (HF)</span>
+      >Model (BERT)</span>
       <span
         style={{ flex: 1, textAlign: "center", fontSize: 10, padding: "4px 0" }}
         className={`tab ${sentModel === "llm" ? "active-tab" : ""}`}
@@ -1559,11 +1529,11 @@ function renderSentiment(news, err, busy, aiSummary, sentModel, setSentModel, ll
       <div style={{ marginBottom: 12 }} key={label}>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
           <span style={{ fontWeight: 600 }}>{label}</span>
-          <span style={{ color: "var(--text-muted)", fontSize: 10 }}>HF: {pct1}% vs LLM: {pct2}%</span>
+          <span style={{ color: "var(--text-muted)", fontSize: 10 }}>BERT: {pct1}% vs LLM: {pct2}%</span>
         </div>
-        {/* HF Track */}
+        {/* BERT Track */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-          <span style={{ fontSize: 8, width: 22, color: "var(--text-muted)", fontWeight: 500 }}>HF</span>
+          <span style={{ fontSize: 8, width: 22, color: "var(--text-muted)", fontWeight: 500 }}>BERT</span>
           <div className="sbar-track" style={{ flex: 1, height: 4 }}><div className="sbar-fill" style={{ width: pct1 + "%", background: color }} /></div>
         </div>
         {/* LLM Track */}
@@ -1577,14 +1547,14 @@ function renderSentiment(news, err, busy, aiSummary, sentModel, setSentModel, ll
     return (
       <>
         <div className="sent-top" style={{ display: "flex", justifyContent: "space-around", gap: 10, padding: "10px 0 16px 0", borderBottom: "1px solid var(--border-light)", marginBottom: 14 }}>
-          {/* Left: Finetune */}
+          {/* Left: BERT */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
             <div className="sent-circle" style={{ ...circleStyle1, width: 56, height: 56, borderWidth: 1.5 }}>
               <span className="sent-num" style={{ ...numStyle1, fontSize: 16 }}>{s.score || "—"}</span>
             </div>
             <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: 11, fontWeight: 700, ...numStyle1 }}>{overallLabel1}</div>
-              <div style={{ fontSize: 9, color: "var(--text-muted)" }}>Finetune (HF)</div>
+              <div style={{ fontSize: 9, color: "var(--text-muted)" }}>Model (BERT)</div>
             </div>
           </div>
           {/* Divider */}
@@ -1611,9 +1581,9 @@ function renderSentiment(news, err, busy, aiSummary, sentModel, setSentModel, ll
   return (
     <>
       {renderSelector()}
-      
+
       {sentModel === "compare" && renderComparison()}
-      {sentModel === "finetune" && renderSingleModel(s, "Model sentimen finetune")}
+      {sentModel === "finetune" && renderSingleModel(s, "Model sentimen BERT")}
       {sentModel === "llm" && renderSingleModel(llmSummary, "Model sentimen LLM")}
 
       <div className="ai-box" style={{ marginTop: 16 }}>
@@ -1633,15 +1603,15 @@ function renderNews(news, err) {
   }
   // Tampilkan 5 berita teratas dengan visual dual-score persis halaman sentimen
   return articles.slice(0, 5).map((a, i) => {
-    const hfMeta  = SENT_META[a.sentiment]      || SENT_META.neutral
-    const llmMeta = SENT_META[a.llm_sentiment]  || SENT_META.neutral
+    const hfMeta = SENT_META[a.sentiment] || SENT_META.neutral
+    const llmMeta = SENT_META[a.llm_sentiment] || SENT_META.neutral
     return (
       <div className="eNews-item" key={i}>
         {/* Dual score badges */}
         <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 52 }}>
           <div className={"eNews-score-badge " + hfMeta.cls}>
             {Math.round((a.score || 0) * 100)}
-            <span className="esb-sub">HF: {hfMeta.short}</span>
+            <span className="esb-sub">BERT: {hfMeta.short}</span>
           </div>
           <div className={"eNews-score-badge " + llmMeta.cls}>
             {Math.round((a.llm_score || 0) * 100)}
@@ -1659,7 +1629,7 @@ function renderNews(news, err) {
             <span className="eNews-src">{CAT_LABELS[a.category] || a.category}</span>
             <span className="eNews-time">{a.time || a.source}</span>
             <span className="eNews-impact impact-med">
-              Finetune: {hfMeta.label} &nbsp;|&nbsp; LLM: {llmMeta.label}
+              BERT: {hfMeta.label} &nbsp;|&nbsp; LLM: {llmMeta.label}
             </span>
           </div>
         </div>

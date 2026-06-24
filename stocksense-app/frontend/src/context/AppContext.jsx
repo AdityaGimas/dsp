@@ -39,6 +39,10 @@ export function AppProvider({ children }) {
     }
   })
 
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const triggerRefresh = useCallback(() => setRefreshTrigger((t) => t + 1), [])
+
   useEffect(() => {
     api
       .getStockList()
@@ -69,6 +73,10 @@ export function AppProvider({ children }) {
     addToWatchlist,
     removeFromWatchlist,
     isWatchlisted,
+    refreshTrigger,
+    isRefreshing,
+    setIsRefreshing,
+    triggerRefresh,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
