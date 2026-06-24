@@ -228,7 +228,7 @@ export default function Overview() {
 
   async function runGroqTechnical() {
     if (!indicators) {
-      alert("Indikator teknikal belum dimuat. Tunggu sebentar.")
+      console.warn("Indikator teknikal belum dimuat. Tunggu sebentar.")
       return
     }
     setGroqTechBusy(true)
