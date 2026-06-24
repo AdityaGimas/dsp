@@ -341,7 +341,7 @@ PREDIKSI ML (XGBoost):
 
 ATURAN WAJIB:
 1. Evaluasi SETIAP faktor di atas dan berikan signal (BUY/SELL/HOLD), weight (kepentingan 0-100), score (kekuatan sinyal 0-100), dan explanation detail dalam bahasa Indonesia.
-2. "weight" mencerminkan seberapa penting faktor itu dalam keputusan. Semua weight harus masuk akal (ML & teknikal lebih tinggi dari individual indikator).
+2. "weight" untuk tiap faktor HARUS dibagikan sama rata (misal masing-masing 10 untuk total 10 faktor), sehingga tidak ada faktor yang dominan atau bertentangan.
 3. Timbang semua sinyal. Mayoritas bullish -> condong "BUY"; mayoritas bearish -> condong "SELL"; bila bertentangan -> "HOLD".
 4. "final_recommendation" HARUS konsisten dengan level harga:
    - "BUY"  : take_profit_1 & take_profit_2 DI ATAS entry_price, stop_loss DI BAWAH entry_price

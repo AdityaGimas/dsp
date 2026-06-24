@@ -951,7 +951,7 @@ export default function Overview() {
                 <div className="card-title">📰 Berita Terkini</div>
                 <span style={S.newsCount}>{news?.articles?.length ? news.articles.length + " artikel" : ""}</span>
               </div>
-              <div className="card-body" style={S.newsBodyPad}>{renderNews(news, newsErr)}</div>
+              <div className="card-body" style={S.newsBodyPad}>{renderNews(news, newsErr, newsBusy)}</div>
             </div>
           </div>
         </div>
@@ -1062,7 +1062,15 @@ function renderDualPred(ml, grok, busy, info) {
     </>
   )
 
-  const grokBody = grok ? (
+  const grokBody = busy ? (
+    <>
+      <div className="pred-src-badge badge-grok">✦ Prediksi LLM Langsung</div>
+      <div className="loading-overlay" style={{ padding: "30px 0", flexDirection: "column" }}>
+        <span className="spinner" style={{ width: 20, height: 20, borderTopColor: "var(--purple)" }} />
+        <div style={{ marginTop: 12, fontSize: 11 }}>Menganalisis...</div>
+      </div>
+    </>
+  ) : grok ? (
     <>
       <div className="pred-src-badge badge-grok">✦ Prediksi LLM — 3 Hari</div>
       <div className="pred-src-price" style={{ fontSize: 20 }}>
@@ -1099,7 +1107,7 @@ function renderDualPred(ml, grok, busy, info) {
   ) : (
     <>
       <div className="pred-src-badge badge-grok">✦ Prediksi LLM Langsung</div>
-      <div style={emptyStyle}>{busy ? "Menganalisis..." : "Menunggu analisis..."}</div>
+      <div style={emptyStyle}>Menunggu analisis...</div>
     </>
   )
 
@@ -1448,10 +1456,11 @@ function renderFinalReco(ml, grok, news, apiRes, busy, onGenerate) {
 }
 
 function renderSentiment(news, err, busy, aiSummary, sentModel, setSentModel, llmSummary) {
-  if (busy && !news) {
+  if (busy) {
     return (
-      <div className="loading-overlay">
-        <span className="spinner" /> Scraping berita & analisis sentimen...
+      <div className="loading-overlay" style={{ padding: "40px 0", flexDirection: "column" }}>
+        <span className="spinner" style={{ width: 24, height: 24, borderTopColor: "var(--teal)" }} />
+        <div style={{ marginTop: 12, fontSize: 12 }}>Scraping berita & analisis sentimen...</div>
       </div>
     )
   }
@@ -1614,7 +1623,15 @@ function renderSentiment(news, err, busy, aiSummary, sentModel, setSentModel, ll
   )
 }
 
-function renderNews(news, err) {
+function renderNews(news, err, busy) {
+  if (busy) {
+    return (
+      <div className="loading-overlay" style={{ padding: "20px 0", flexDirection: "column" }}>
+        <span className="spinner" style={{ borderTopColor: "var(--teal)" }} />
+        <div style={{ marginTop: 8, fontSize: 12 }}>Memuat berita terkini...</div>
+      </div>
+    )
+  }
   if (err && !news) return <div className="error-msg">{"Gagal memuat berita: " + err}</div>
   const articles = news?.articles || []
   if (!articles.length) {
