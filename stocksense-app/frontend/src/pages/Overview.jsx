@@ -580,14 +580,16 @@ export default function Overview() {
 
         <div className="kpi-grid" style={S.kpiGrid}>
           <div className="kpi-card kpi-c-blue">
-            <div className="kpi-label">Akurasi XGBoost</div>
-            <div className="kpi-val" style={S.blueTxt}>
-              {mlPred?.model_accuracy ? mlPred.model_accuracy.toFixed(1) + "%" : "—"}
+            <div className="kpi-label">Momentum (RSI 14)</div>
+            <div className="kpi-val" style={indicators?.rsi ? { color: indColor(indicators.rsi.signal) } : S.blueTxt}>
+              {indicators?.rsi?.value ? indicators.rsi.value.toFixed(1) : "—"}
             </div>
-            <div className="kpi-sub">Model: {mlPred?.model_name || "—"}</div>
+            <div className="kpi-sub">
+              Status: {indicators?.rsi?.signal ? indicators.rsi.signal.toUpperCase() : "Menunggu..."}
+            </div>
           </div>
           <div className="kpi-card kpi-c-blue">
-            <div className="kpi-label">XGBoost H+1</div>
+            <div className="kpi-label">Prediksi Besok (ML)</div>
             <div className="kpi-val" style={S.blueTxt}>{mlFirst ? fmt(mlFirst.price) : "—"}</div>
             <div className="kpi-sub">
               {mlFirst ? (
@@ -597,18 +599,18 @@ export default function Overview() {
               ) : (
                 "—"
               )}{" "}
-              {mlFirst?.price_low && mlFirst?.price_high ? `(${fmt(mlFirst.price_low)}–${fmt(mlFirst.price_high)})` : "besok"}
+              {mlFirst?.price_low && mlFirst?.price_high ? `(${fmt(mlFirst.price_low)}–${fmt(mlFirst.price_high)})` : ""}
             </div>
           </div>
           <div className="kpi-card kpi-c-purple">
-            <div className="kpi-label">LLM Langsung</div>
+            <div className="kpi-label">Analisis LLM (3 Hari)</div>
             <div className="kpi-val" style={grokKpiStyle}>
               {groqTech ? recLabel(groqTech.recommendation) : groqTechBusy ? "..." : "—"}
             </div>
             <div className="kpi-sub">
               {groqTech
                 ? "Confidence: " + Math.round((groqTech.confidence || 0) * 100) + "%"
-                : groqTechErr || "Menganalisis..."}
+                : groqTechErr || "Menunggu..."}
             </div>
           </div>
           <div className="kpi-card kpi-c-teal">
@@ -645,9 +647,23 @@ export default function Overview() {
             </div>
           </div>
           <div className="kpi-card kpi-c-amber">
-            <div className="kpi-label">Sinyal Teknikal</div>
-            <div className="kpi-val" style={signalStyle}>{ov.signal || "—"}</div>
-            <div className="kpi-sub">{`${ov.buy_count || 0}/${ov.total || 4} indikator mendukung`}</div>
+            <div className="kpi-label">Rasio Volume (20H)</div>
+            <div className="kpi-val" style={indicators?.volume_ratio ? { color: indColor(indicators.volume_ratio.value > 1.0 ? "bullish" : "bearish") } : S.amberTxt}>
+              {indicators?.volume_ratio?.value ? indicators.volume_ratio.value.toFixed(2) + "x" : "—"}
+            </div>
+            <div className="kpi-sub">
+              {indicators?.volume_ratio?.value ? (
+                indicators.volume_ratio.value > 1.5 ? (
+                  <span style={S.green}>Volume Sangat Tinggi</span>
+                ) : indicators.volume_ratio.value > 1.0 ? (
+                  <span style={S.green}>Volume Meningkat</span>
+                ) : (
+                  <span style={S.mutedV}>Volume Normal/Rendah</span>
+                )
+              ) : (
+                "Menunggu..."
+              )}
+            </div>
           </div>
         </div>
 
@@ -750,7 +766,6 @@ export default function Overview() {
               <div className="card-header">
                 <div className="card-title">🌐 Sentimen Berita</div>
                 <div style={S.rowGap6}>
-                  <span className="analysis-time">{newsTs ? "⏱ " + fmtAge(newsTs) : ""}</span>
                   <button
                     className={"fetch-news-btn " + (newsBusy ? "loading" : "")}
                     onClick={fetchNews}
@@ -1095,19 +1110,10 @@ function renderFinalReco(ml, grok, news, apiRes, busy, onGenerate) {
   const blueV        = { color: "var(--blue)" }
   const greenV       = { color: "var(--green)" }
   const summaryStyle = { color: "var(--purple)" }
-  const mlActionStyle   = { color: recColor(ml.recommendation) }
-  const grokActionStyle = { color: grok ? recColor(grok.recommendation) : "var(--text-muted)" }
-
   const sources = [`XGBoost (${Math.round(mlConf * 100)}%)`]
   if (grok) sources.push(`LLM Langsung (${Math.round((grok.confidence || 0) * 100)}%)`)
   if (news) sources.push(`Sentimen Berita (${news.sentiment_summary?.score || "—"}/100)`)
   if (apiRes) sources.push(`Analisis Sentimen & Makro LLM`)
-
-  const sentOverall = news?.sentiment_summary?.overall
-  const sentAction  = news ? (sentOverall === "positive" ? "Positif" : sentOverall === "negative" ? "Negatif" : "Netral") : "—"
-  const sentActionStyle = {
-    color: news ? recColor(sentOverall === "positive" ? "BUY" : sentOverall === "negative" ? "SELL" : "HOLD") : "var(--text-muted)",
-  }
 
   const agreeBadgeStyle = {
     background: signalAgreement === "Sepakat" ? "rgba(45,212,160,0.15)" : signalAgreement === "Mayoritas" ? "rgba(245,183,49,0.15)" : "rgba(245,94,94,0.15)",
@@ -1119,27 +1125,6 @@ function renderFinalReco(ml, grok, news, apiRes, busy, onGenerate) {
 
   return (
     <>
-      {/* ── Top 3 source summary cards ── */}
-      <div className="reco-sources">
-        <div className="reco-src-card">
-          <div className="reco-src-label">⚡ Model XGBoost</div>
-          <div className="reco-src-action" style={mlActionStyle}>{recLabel(ml.recommendation || "HOLD")}</div>
-          <div className="reco-src-conf">{"Conf: " + Math.round((ml.confidence || 0) * 100) + "%"}</div>
-        </div>
-        <div className="reco-src-card">
-          <div className="reco-src-label">✦ LLM Langsung</div>
-          <div className="reco-src-action" style={grokActionStyle}>{grok ? recLabel(grok.recommendation) : "—"}</div>
-          <div className="reco-src-conf">{grok ? "Conf: " + Math.round((grok.confidence || 0) * 100) + "%" : "Menganalisis..."}</div>
-        </div>
-        <div className="reco-src-card">
-          <div className="reco-src-label">📰 Sentimen</div>
-          <div className="reco-src-action" style={sentActionStyle}>{sentAction}</div>
-          <div className="reco-src-conf">{news ? "Skor: " + (news.sentiment_summary?.score || "—") + "/100" : "Klik Ambil Berita"}</div>
-        </div>
-      </div>
-
-      <div className="reco-divider" />
-
       {/* ── Final verdict ── */}
       <div className="reco-action">
         <div className={"action-dot " + dotClass} />
@@ -1151,13 +1136,17 @@ function renderFinalReco(ml, grok, news, apiRes, busy, onGenerate) {
         </div>
       </div>
 
-      {/* ── Summary ── */}
-      {(summaryText || grok?.summary) && (
-        <div className="reco-desc">
-          <em style={summaryStyle}>{`"${summaryText || grok?.summary}"`}</em>
+      {/* ── Summary / Kesimpulan Keputusan Akhir AI ── */}
+      {(summaryText || grok?.summary) ? (
+        <div className="reco-summary-box" style={{ marginTop: 12, padding: "12px 14px", background: "rgba(167, 139, 250, 0.05)", border: "1px solid rgba(167, 139, 250, 0.15)", borderRadius: "var(--r-sm)", lineHeight: 1.6, marginBottom: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--purple)", display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+            <span>🔮</span> Kesimpulan & Ringkasan Analisis AI
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-primary)", fontStyle: "normal" }}>
+            {summaryText || grok?.summary}
+          </div>
         </div>
-      )}
-      {!summaryText && !grok?.summary && (
+      ) : (
         <div className="reco-desc">
           {"Rekomendasi dihitung dari: "}
           <strong>{sources.join(" · ")}</strong>.
@@ -1221,14 +1210,17 @@ function renderFinalReco(ml, grok, news, apiRes, busy, onGenerate) {
         <div className="lvl-item">
           <div className="lvl-label">Stop Loss</div>
           <div className="lvl-val" style={redV}>{fmt(stopLoss)}</div>
+          <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 3 }}>Batas rugi maks</div>
         </div>
         <div className="lvl-item">
           <div className="lvl-label">Entry</div>
           <div className="lvl-val" style={blueV}>{fmt(entry)}</div>
+          <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 3 }}>Harga beli ideal</div>
         </div>
         <div className="lvl-item">
           <div className="lvl-label">Target 1</div>
           <div className="lvl-val" style={greenV}>{fmt(target)}</div>
+          <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 3 }}>Target ambil untung</div>
           {target2 > 0 && <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>T2: <span style={greenV}>{fmt(target2)}</span></div>}
         </div>
       </div>
@@ -1237,6 +1229,15 @@ function renderFinalReco(ml, grok, news, apiRes, busy, onGenerate) {
           Risk/Reward: <span style={{ color: rrRatio >= 2 ? "var(--green)" : "var(--amber)", fontWeight: 700 }}>{rrRatio.toFixed(2)}x</span>
         </div>
       )}
+
+      <div style={{ fontSize: 10, color: "var(--text-secondary)", marginTop: 12, padding: "10px 12px", background: "rgba(255,255,255,0.03)", borderRadius: "var(--r-sm)", border: "1px solid var(--border-light)", lineHeight: 1.5 }}>
+        ℹ️ <strong>Panduan Transaksi:</strong>
+        <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
+          <li>Mulai membeli saham di kisaran harga <strong>Entry (Beli)</strong>.</li>
+          <li>Batasi potensi kerugian dengan menjual jika harga turun menembus <strong>Stop Loss (Batas Rugi)</strong>.</li>
+          <li>Ambil keuntungan secara bertahap saat harga naik mencapai <strong>Target 1 (Jual)</strong>.</li>
+        </ul>
+      </div>
     </>
   )
 }
