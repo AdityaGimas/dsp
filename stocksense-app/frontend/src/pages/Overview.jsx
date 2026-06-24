@@ -722,44 +722,64 @@ export default function Overview() {
           {/* Card 1: Perbandingan Prediksi XGBoost & LLM Besok */}
           <div className="kpi-card kpi-c-blue">
             <div className="kpi-label">Prediksi XGB vs LLM (Besok)</div>
-            <div className="kpi-val" style={mlPred && groqTech ? (mlPred.recommendation === groqTech.recommendation ? S.greenTxt : S.amberTxt) : S.blueTxt}>
-              {mlPred && groqTech ? (mlPred.recommendation === groqTech.recommendation ? recLabel(mlPred.recommendation) : `XGB: ${recLabel(mlPred.recommendation)} | LLM: ${recLabel(groqTech.recommendation)}`) : "Menunggu..."}
+            <div className="kpi-val">
+              {mlPred && groqTech ? (
+                mlPred.recommendation === groqTech.recommendation ? (
+                  <span style={{ color: mlPred.recommendation === "BUY" ? "var(--green)" : mlPred.recommendation === "SELL" ? "var(--red)" : "var(--amber)" }}>
+                    {recLabel(mlPred.recommendation)}
+                  </span>
+                ) : (
+                  <span style={{ fontSize: "0.8em" }}>
+                    <span style={{ color: "var(--text-muted)" }}>XGB: </span>
+                    <span style={{ color: mlPred.recommendation === "BUY" ? "var(--green)" : mlPred.recommendation === "SELL" ? "var(--red)" : "var(--amber)" }}>
+                      {recLabel(mlPred.recommendation)}
+                    </span>
+                    <span style={{ color: "var(--border)", margin: "0 4px" }}>|</span>
+                    <span style={{ color: "var(--text-muted)" }}>LLM: </span>
+                    <span style={{ color: groqTech.recommendation === "BUY" ? "var(--green)" : groqTech.recommendation === "SELL" ? "var(--red)" : "var(--amber)" }}>
+                      {recLabel(groqTech.recommendation)}
+                    </span>
+                  </span>
+                )
+              ) : (
+                <span style={{ color: "var(--text-muted)" }}>Menunggu...</span>
+              )}
             </div>
             <div className="kpi-sub">
-              {mlPred && groqTech ? (mlPred.recommendation === groqTech.recommendation ? "XGBoost & LLM sepakat" : "Sinyal prediksi berbeda") : "—"}
+              {mlPred && groqTech ? (mlPred.recommendation === groqTech.recommendation ? "Kedua model AI sepakat memberikan rekomendasi arah yang sama." : "Terdapat perbedaan prediksi antara model XGBoost dan LLM.") : "—"}
             </div>
           </div>
 
           {/* Card 2: Ringkasan Indikator Teknikal */}
           <div className="kpi-card kpi-c-purple">
             <div className="kpi-label">Indikator Teknikal</div>
-            <div className="kpi-val" style={signalStyle}>
+            <div className="kpi-val" style={{ color: ov.signal ? (ov.signal.toLowerCase() === "buy" ? "var(--green)" : ov.signal.toLowerCase() === "sell" ? "var(--red)" : "var(--amber)") : "var(--text-muted)" }}>
               {ov.signal ? ov.signal.toUpperCase() : "Menunggu..."}
             </div>
             <div className="kpi-sub">
-              {indicators ? `RSI (${indicators.rsi?.signal || "-"}), MACD (${indicators.macd?.signal || "-"}), MA` : "—"}
+              {indicators ? `Analisis gabungan RSI, MACD, dan Moving Average mengkonfirmasi arah ini.` : "—"}
             </div>
           </div>
 
           {/* Card 3: Ringkasan Sentimen */}
           <div className="kpi-card kpi-c-teal">
             <div className="kpi-label">Berita dan Sentimen</div>
-            <div className="kpi-val" style={sentKpiStyle}>
+            <div className="kpi-val" style={{ color: news ? ((sentModel === "llm" ? llmSummary.overall_label : sm.overall_label).toLowerCase() === "positive" ? "var(--green)" : (sentModel === "llm" ? llmSummary.overall_label : sm.overall_label).toLowerCase() === "negative" ? "var(--red)" : "var(--amber)") : "var(--text-muted)" }}>
               {news ? (sentModel === "llm" ? llmSummary.overall_label : sm.overall_label).toUpperCase() : "Menunggu..."}
             </div>
             <div className="kpi-sub">
-              {news ? `Skor: ${((sentModel === "llm" ? llmSummary.score : sm.score) || "0")}/100 (Dominasi ${(sentModel === "llm" ? llmSummary.overall_label : sm.overall_label).toLowerCase()})` : 'Klik "↻ Refresh"'}
+              {news ? `Berdasarkan berita terbaru, sentimen pasar saat ini didominasi nilai ${(sentModel === "llm" ? llmSummary.overall_label : sm.overall_label).toLowerCase()}.` : 'Klik "↻ Refresh"'}
             </div>
           </div>
 
           {/* Card 4: Ringkasan Makro Ekonomi */}
           <div className="kpi-card kpi-c-amber">
             <div className="kpi-label">Makro Ekonomi</div>
-            <div className="kpi-val" style={macroData ? (macroData.IHSG?.change_pct > 0 ? S.greenTxt : S.redTxt) : S.blueTxt}>
+            <div className="kpi-val" style={{ color: macroData ? (macroData.IHSG?.change_pct > 0 ? "var(--green)" : "var(--amber)") : "var(--text-muted)" }}>
               {macroData ? (macroData.IHSG?.change_pct > 0 ? "KONDUSIF" : "BERHATI-HATI") : "Menunggu..."}
             </div>
             <div className="kpi-sub">
-              {macroData ? `IHSG ${macroData.IHSG?.change_pct > 0 ? "Naik" : "Turun"}, Rupiah ${macroData.USDIDR?.change_pct > 0 ? "Melemah" : "Menguat"}` : "—"}
+              {macroData ? `Pergerakan IHSG dan Rupiah saat ini memberikan pengaruh yang ${macroData.IHSG?.change_pct > 0 ? "positif" : "negatif"} terhadap pasar.` : "—"}
             </div>
           </div>
         </div>
