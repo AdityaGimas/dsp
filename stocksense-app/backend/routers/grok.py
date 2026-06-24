@@ -160,6 +160,11 @@ FINAL_SCHEMA = (
     ']}'
 )
 
+MACRO_SCHEMA = (
+    '{"summary": "<1-2 kalimat ringkasan tingkat atas>", '
+    '"impact_on_market": "Positif|Negatif|Netral", '
+    '"detailed_analysis": "<paragraf naratif yang menjelaskan SEMUA data makro (IHSG, USDIDR, BIRate, GDP, Inflation) dan dampaknya terhadap iklim investasi pasar saham>"}'
+)
 
 # 1. TEKNIKAL
 class TechReq(BaseModel):
@@ -358,3 +363,38 @@ Balas HANYA JSON valid berikut tanpa teks lain (ganti tiap placeholder <...> den
     res  = await groq_chat_rotate([{"role": "user", "content": prompt}], MODEL_FINAL_RECO, max_tokens=1200, api_key=req.api_key, json_mode=True)
     data = parse_json(res["choices"][0]["message"]["content"])
     return {"ticker": req.ticker, **data}
+
+
+# 4. MAKRO EKONOMI
+class MacroReq(BaseModel):
+    macro_data: dict
+    api_key: Optional[str] = None
+
+@router.post("/macro")
+async def groq_macro(req: MacroReq):
+    """Model: llama-3.1-8b-instant - analisis data makro ekonomi."""
+    m = req.macro_data
+    ihsg = m.get('IHSG', {})
+    usd = m.get('USDIDR', {})
+    bi = m.get('BIRate', {})
+    gdp = m.get('GDP', {})
+    infl = m.get('Inflation', {})
+    
+    prompt = f"""Kamu analis ekonomi makro Indonesia. Analisis data makro terkini dan dampaknya terhadap pasar saham secara keseluruhan.
+
+DATA MAKRO TERKINI:
+- IHSG: {ihsg.get('value','?')} ({ihsg.get('change_pct',0):+.2f}%)
+- USD/IDR: Rp {usd.get('value','?'):,} ({usd.get('change_pct',0):+.2f}%)
+- BI Rate: {bi.get('value','?')}% ({bi.get('desc','?')})
+- PDB (YoY): {gdp.get('value','?')}% ({gdp.get('desc','?')})
+- Inflasi (YoY): {infl.get('value','?')}% ({infl.get('desc','?')})
+
+ATURAN WAJIB:
+1. "impact_on_market" tentukan apakah kondisi makro saat ini cenderung Positif, Negatif, atau Netral untuk pasar saham secara keseluruhan.
+2. "detailed_analysis" WAJIB berupa paragraf naratif yang menganalisis kelima data di atas (IHSG, kurs, suku bunga, PDB, dan inflasi) menjadi satu kesatuan cerita mengenai dampaknya terhadap pasar.
+
+Balas HANYA JSON valid berikut tanpa teks lain (ganti placeholder <...>):
+""" + MACRO_SCHEMA
+    res = await groq_chat_rotate([{"role": "user", "content": prompt}], MODEL_TECHNICAL, max_tokens=600, api_key=req.api_key, json_mode=True)
+    data = parse_json(res["choices"][0]["message"]["content"])
+    return {"source": "groq_macro", **data}

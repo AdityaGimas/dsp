@@ -13,6 +13,9 @@ const St = {
   src: { fontSize: 9, color: "var(--text-muted)", fontFamily: "var(--font-mono)" },
   toolbar: { display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12, marginBottom: 4 },
   updatedTxt: { fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" },
+  sumLabels: { display: "flex", justifyContent: "space-between", marginTop: 8 },
+  green: { fontSize: 11, fontWeight: 500, color: "var(--green)" },
+  red: { fontSize: 11, fontWeight: 500, color: "var(--red)" },
 }
 
 // Fallback (dipakai hanya bila backend belum mengirim charts).
@@ -44,6 +47,10 @@ export default function MakroEkonomi() {
   const [loading, setLoading] = useState(false)
   const [updatedAt, setUpdatedAt] = useState("")
 
+  const [aiData, setAiData] = useState(null)
+  const [aiBusy, setAiBusy] = useState(false)
+  const [aiErr, setAiErr] = useState("")
+
   const load = (refresh = false) => {
     setLoading(true)
     api
@@ -60,6 +67,20 @@ export default function MakroEkonomi() {
     load(false)
   }, [])
 
+  const runAI = async () => {
+    if (!macroData) return
+    setAiBusy(true)
+    setAiErr("")
+    try {
+      const res = await api.groqMacro({ macro_data: macroData })
+      setAiData(res)
+    } catch (e) {
+      setAiErr(e.message)
+    } finally {
+      setAiBusy(false)
+    }
+  }
+
   const m = macroData || {}
 
   // ───── HERO: kartu ringkasan indikator ─────
@@ -69,30 +90,35 @@ export default function MakroEkonomi() {
       val: m.IHSG ? nf(m.IHSG.value) : "—",
       chg: m.IHSG ? m.IHSG.change_pct : null,
       desc: "Indeks Harga Saham Gabungan",
+      sig: m.IHSG && m.IHSG.change_pct != null ? (m.IHSG.change_pct > 0 ? 1 : -1) : 0
     },
     {
       label: "USD / IDR", accent: "mh-purple", mode: "pct",
       val: m.USDIDR ? "Rp " + nf(m.USDIDR.value) : "—",
       chg: m.USDIDR ? m.USDIDR.change_pct : null,
       desc: "Nilai tukar Rupiah",
+      sig: m.USDIDR && m.USDIDR.change_pct != null ? (m.USDIDR.change_pct <= 0 ? 1 : -1) : 0
     },
     {
       label: "BI Rate", accent: "mh-neu", mode: "pp",
       val: m.BIRate ? Number(m.BIRate.value).toFixed(2) + "%" : "—",
       chg: m.BIRate ? m.BIRate.change : null,
       desc: m.BIRate ? m.BIRate.desc : "Suku bunga acuan",
+      sig: m.BIRate && m.BIRate.change != null ? (m.BIRate.change <= 0 ? 1 : -1) : 0
     },
     {
       label: "Inflasi", accent: "mh-down", mode: "pp",
       val: m.Inflation ? Number(m.Inflation.value).toFixed(2) + "%" : "—",
       chg: m.Inflation ? m.Inflation.change : null,
       desc: m.Inflation ? m.Inflation.desc : "Inflasi tahunan",
+      sig: m.Inflation && m.Inflation.change != null ? (m.Inflation.change <= 0 ? 1 : -1) : 0
     },
     {
       label: "PDB", accent: "mh-up", mode: "pp",
       val: m.GDP ? Number(m.GDP.value).toFixed(2) + "%" : "—",
       chg: m.GDP ? m.GDP.change : null,
       desc: m.GDP ? m.GDP.desc : "Pertumbuhan ekonomi",
+      sig: m.GDP && m.GDP.change != null ? (m.GDP.change > 0 ? 1 : -1) : 0
     },
   ]
 
@@ -131,6 +157,28 @@ export default function MakroEkonomi() {
   const srcLine = (c) =>
     c && c.source ? "Sumber: " + c.source + (c.updated ? " · " + c.updated : "") : ""
 
+  let posCount = hero.filter(h => h.sig === 1).length
+  let negCount = hero.filter(h => h.sig === -1).length
+  let totalCount = posCount + negCount
+
+  const posPct = totalCount ? (posCount / totalCount) * 100 : 50
+
+  const sumPosStyle = { width: posPct + "%", background: "var(--green)" }
+  const sumNegStyle = { width: (100 - posPct) + "%", background: "var(--red)" }
+
+  let overallSignal = "NETRAL"
+  if (posCount > negCount) overallSignal = "KONDUSIF"
+  if (negCount > posCount) overallSignal = "BERISIKO"
+
+  const ovStyle = {
+    background: overallSignal === "KONDUSIF" ? "rgba(45,212,160,0.15)" : overallSignal === "BERISIKO" ? "rgba(245,94,94,0.15)" : "rgba(245,183,49,0.15)",
+    color: overallSignal === "KONDUSIF" ? "var(--green)" : overallSignal === "BERISIKO" ? "var(--red)" : "var(--amber)",
+    padding: "2px 8px",
+    borderRadius: 4,
+    fontSize: 11,
+    fontWeight: 600
+  }
+
   return (
     <>
       <TickerSearchBar label="Makro Ekonomi" />
@@ -152,13 +200,40 @@ export default function MakroEkonomi() {
         {/* ── HERO ── */}
         <div className="macro-hero">
           {hero.map((h) => (
-            <div key={h.label} className={"mh-card " + h.accent}>
+            <div key={h.label} className={"mh-card " + h.accent} style={{ position: "relative" }}>
               <div className="mh-label">{h.label}</div>
               <div className="mh-val">{h.val}</div>
               <div style={chgStyleFor(h)}>{chgText(h)}</div>
               <div className="mh-desc">{h.desc}</div>
+              {h.sig !== 0 && (
+                <div style={{
+                  position: "absolute", top: 12, right: 12, fontSize: 9, fontWeight: 600, padding: "2px 6px", borderRadius: 4,
+                  background: h.sig === 1 ? "rgba(45,212,160,0.15)" : "rgba(245,94,94,0.15)",
+                  color: h.sig === 1 ? "var(--green)" : "var(--red)"
+                }}>
+                  {h.sig === 1 ? "KONDUSIF" : "BERISIKO"}
+                </div>
+              )}
             </div>
           ))}
+        </div>
+
+        {/* ── RINGKASAN SINYAL ── */}
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div className="card-title">📊 Ringkasan Sinyal Makro</div>
+            <span className="sig-signal" style={ovStyle}>{overallSignal}</span>
+          </div>
+          <div className="card-body">
+            <div className="sum-bar">
+              <div className="sum-seg" style={sumPosStyle} />
+              <div className="sum-seg" style={sumNegStyle} />
+            </div>
+            <div style={St.sumLabels}>
+              <span style={St.green}>{posCount} indikator Kondusif</span>
+              <span style={St.red}>{negCount} indikator Berisiko</span>
+            </div>
+          </div>
         </div>
 
         {/* ── ROW 1 ── */}
@@ -211,6 +286,50 @@ export default function MakroEkonomi() {
             <div className="card-body">
               <div className="chart-wrap" style={St.chart220}><Line data={biRateData} options={biRateOpts} /></div>
               <div style={St.note}>Perubahan BI 7-Day Reverse Repo Rate. Garis bertingkat menandai keputusan Rapat Dewan Gubernur BI.</div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── ANALISIS AI (DETAIL) ── */}
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title">🤖 Analisis AI</div>
+          </div>
+          <div className="card-body">
+            <div className="ai-box" style={{ background: "rgba(167,139,250,0.05)", border: "1px solid rgba(167,139,250,0.15)", padding: 16, borderRadius: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+                <div className="ai-lbl" style={{ color: "var(--purple)", fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 0 }}>Groq · Analisis Makro Ekonomi</div>
+                <button className={"fetch-news-btn " + (aiBusy ? "loading" : "")} style={{ padding: "6px 12px", minWidth: 160 }} onClick={runAI} disabled={aiBusy || !macroData}>
+                  {aiBusy && <span className="spin-sm" style={{ borderTopColor: "var(--purple)" }} />}
+                  <span className="btn-txt">{aiBusy ? "Menganalisis..." : "▶ Jalankan Analisis AI"}</span>
+                </button>
+              </div>
+              {aiErr ? (
+                <div className="error-msg">{aiErr}</div>
+              ) : aiData ? (
+                <div style={{ padding: "10px 0 0" }}>
+                  <div style={{ marginBottom: 12 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>Dampak Pasar: </span>
+                    <span style={{
+                      fontSize: 12, fontWeight: 600, padding: "2px 8px", borderRadius: 4,
+                      background: aiData.impact_on_market === "Positif" ? "rgba(45,212,160,0.15)" : aiData.impact_on_market === "Negatif" ? "rgba(245,94,94,0.15)" : "rgba(245,183,49,0.15)",
+                      color: aiData.impact_on_market === "Positif" ? "var(--green)" : aiData.impact_on_market === "Negatif" ? "var(--red)" : "var(--amber)"
+                    }}>
+                      {aiData.impact_on_market.toUpperCase()}
+                    </span>
+                  </div>
+                  <p style={{ fontSize: 13, color: "var(--text-primary)", fontWeight: 600, lineHeight: 1.6, margin: "0 0 8px" }}>
+                    {aiData.summary}
+                  </p>
+                  <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
+                    {aiData.detailed_analysis}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "20px 0" }}>
+                  Klik tombol "Jalankan Analisis AI" untuk mendapatkan interpretasi naratif secara kalimat lengkap tentang indikator makro ekonomi saat ini.
+                </div>
+              )}
             </div>
           </div>
         </div>

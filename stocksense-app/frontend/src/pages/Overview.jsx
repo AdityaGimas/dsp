@@ -783,15 +783,27 @@ export default function Overview() {
           </div>
 
           {/* Card 4: Ringkasan Makro Ekonomi */}
-          <div className="kpi-card kpi-c-amber">
-            <div className="kpi-label">Makro Ekonomi</div>
-            <div className="kpi-val" style={{ color: macroData ? indColor(macroData.IHSG?.change_pct > 0 ? "KONDUSIF" : "BERHATI-HATI") : "var(--text-muted)" }}>
-              {macroData ? (macroData.IHSG?.change_pct > 0 ? "KONDUSIF" : "BERHATI-HATI") : "Menunggu..."}
-            </div>
-            <div className="kpi-sub">
-              {macroData ? `Pergerakan IHSG dan Rupiah saat ini memberikan pengaruh yang ${macroData.IHSG?.change_pct > 0 ? "positif" : "negatif"} terhadap pasar.` : "—"}
-            </div>
-          </div>
+          {(() => {
+            let mPos = 0, mNeg = 0;
+            if (macroData) {
+              if (macroData.IHSG && macroData.IHSG.change_pct > 0) mPos++; else if (macroData.IHSG) mNeg++;
+              if (macroData.USDIDR && macroData.USDIDR.change_pct <= 0) mPos++; else if (macroData.USDIDR) mNeg++;
+              if (macroData.BIRate && macroData.BIRate.change <= 0) mPos++; else if (macroData.BIRate) mNeg++;
+              if (macroData.Inflation && macroData.Inflation.change <= 0) mPos++; else if (macroData.Inflation) mNeg++;
+              if (macroData.GDP && macroData.GDP.change > 0) mPos++; else if (macroData.GDP) mNeg++;
+            }
+            const macroStatus = macroData ? (mPos > mNeg ? "KONDUSIF" : "BERISIKO") : "Menunggu...";
+            const macroColor = macroData ? (mPos > mNeg ? "var(--green)" : "var(--red)") : "var(--text-muted)";
+            const macroDesc = macroData ? `Terdapat ${mPos} dari ${mPos + mNeg} indikator makro ekonomi yang memberikan pengaruh positif.` : "—";
+
+            return (
+              <div className="kpi-card kpi-c-amber">
+                <div className="kpi-label">Makro Ekonomi</div>
+                <div className="kpi-val" style={{ color: macroColor }}>{macroStatus}</div>
+                <div className="kpi-sub">{macroDesc}</div>
+              </div>
+            )
+          })()}
         </div>
 
         <div className="main-grid">
