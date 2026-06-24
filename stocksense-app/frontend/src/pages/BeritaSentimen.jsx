@@ -31,9 +31,9 @@ const SENT_META = {
 }
 
 const CAT_LABELS = {
-  market:     "📈 Pasar",
-  macro:      "🏦 Makro Ekonomi",
-  geopolitics:"🌍 Geopolitik",
+  market:      "📈 Pasar",
+  macro:       "🏦 Makro Ekonomi",
+  geopolitics: "🌍 Geopolitik",
 }
 
 const CAT_KEYS = ["all", "market", "macro", "geopolitics"]
@@ -44,28 +44,52 @@ const CAT_FILTER_LABELS = {
   geopolitics: "Geopolitik",
 }
 
-// Dummy 7-hari tren sentimen
-const TREND_LABELS = ["H-7","H-6","H-5","H-4","H-3","H-2","H-1"]
-const TREND_DATA   = [52, 55, 51, 58, 60, 57, 62]
+// ─── Helper functions (module-level, not inside component) ────────────────────
+function clrO(o)   { return o === "positive" ? "var(--green)" : o === "negative" ? "var(--red)" : "var(--amber)" }
+function lblO(o)   { return o === "positive" ? "Positif" : o === "negative" ? "Negatif" : "Netral" }
+function bgClrO(o) { return o === "positive" ? "rgba(45,212,160,0.1)" : o === "negative" ? "rgba(245,94,94,0.1)" : "rgba(245,183,49,0.1)" }
 
+function CompareRow({ label, pct1, pct2, color }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
+        <span style={{ fontWeight: 600 }}>{label}</span>
+        <span style={{ color: "var(--text-muted)", fontSize: 10 }}>BERT: {pct1}% &nbsp;|&nbsp; LLM: {pct2}%</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <span style={{ fontSize: 8, width: 28, color: "var(--text-muted)", fontWeight: 600 }}>BERT</span>
+        <div className="sbar-track" style={{ flex: 1, height: 4 }}>
+          <div className="sbar-fill" style={{ width: pct1 + "%", background: color }} />
+        </div>
+        <span style={{ fontSize: 10, width: 32, textAlign: "right", color }}>{pct1}%</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 8, width: 28, color: "var(--text-muted)", fontWeight: 600 }}>LLM</span>
+        <div className="sbar-track" style={{ flex: 1, height: 4, opacity: 0.7 }}>
+          <div className="sbar-fill" style={{ width: pct2 + "%", background: color }} />
+        </div>
+        <span style={{ fontSize: 10, width: 32, textAlign: "right", color }}>{pct2}%</span>
+      </div>
+    </div>
+  )
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 export default function BeritaSentimen() {
   const { currentTicker } = useApp()
   const code = currentTicker.replace(".JK", "")
 
-  const [news,           setNews]           = useState(null)
-  const [busy,           setBusy]           = useState(false)
-  const [err,            setErr]            = useState("")
-  const [filter,         setFilter]         = useState("all")
+  const [news,          setNews]          = useState(null)
+  const [busy,          setBusy]          = useState(false)
+  const [err,           setErr]           = useState("")
+  const [filter,        setFilter]        = useState("all")
+  const [sectorAi,      setSectorAi]      = useState({})
+  const [sectorAiBusy,  setSectorAiBusy]  = useState({})
+  const [overallAi,     setOverallAi]     = useState("")
+  const [overallAiBusy, setOverallAiBusy] = useState(false)
+  const [trendRange,    setTrendRange]    = useState(7)
 
-  // Per-sector AI
-  const [sectorAi,       setSectorAi]       = useState({})   // { market: "...", macro: "...", geopolitics: "..." }
-  const [sectorAiBusy,   setSectorAiBusy]   = useState({})
-
-  // Overall AI (bottom)
-  const [overallAi,      setOverallAi]      = useState("")
-  const [overallAiBusy,  setOverallAiBusy]  = useState(false)
-
-  // ─── Fetch pipeline ──────────────────────────────────────────────────────
+  // ─── Fetch pipeline ─────────────────────────────────────────────────────────
   async function fetchNews() {
     setBusy(true)
     setErr("")
@@ -87,17 +111,16 @@ export default function BeritaSentimen() {
 
       const merged = newsData.articles.map((a, i) => ({
         ...a,
-        category:       sentData.results[i]?.category    || a.category || "market",
-        sentiment:      sentData.results[i]?.sentiment   || "neutral",
-        sentiment_label:sentData.results[i]?.label       || "Netral",
-        score:          sentData.results[i]?.score       ?? 0,
-        llm_sentiment:  sentData.results[i]?.llm_sentiment || "neutral",
-        llm_label:      sentData.results[i]?.llm_label   || "Netral",
-        llm_score:      sentData.results[i]?.llm_score   ?? 0,
+        category:        sentData.results[i]?.category     || a.category || "market",
+        sentiment:       sentData.results[i]?.sentiment    || "neutral",
+        sentiment_label: sentData.results[i]?.label        || "Netral",
+        score:           sentData.results[i]?.score        ?? 0,
+        llm_sentiment:   sentData.results[i]?.llm_sentiment || "neutral",
+        llm_label:       sentData.results[i]?.llm_label    || "Netral",
+        llm_score:       sentData.results[i]?.llm_score    ?? 0,
       }))
 
       setNews({ total_articles: sentData.total_articles, articles: merged, summary: sentData.summary })
-
     } catch (e) {
       setErr(e.message)
     } finally {
@@ -105,7 +128,7 @@ export default function BeritaSentimen() {
     }
   }
 
-  // ─── Per-sector AI analysis ────────────────────────────────────────────────
+  // ─── Per-sector AI ──────────────────────────────────────────────────────────
   async function runSectorAi(sector, articlesForSector) {
     if (!articlesForSector.length) return
     setSectorAiBusy(prev => ({ ...prev, [sector]: true }))
@@ -124,7 +147,7 @@ export default function BeritaSentimen() {
     }
   }
 
-  // ─── Overall AI analysis (kesimpulan akhir) ───────────────────────────────
+  // ─── Overall AI (Groq) ──────────────────────────────────────────────────────
   async function runOverallAi() {
     if (!articles.length) return
     setOverallAiBusy(true)
@@ -166,6 +189,7 @@ export default function BeritaSentimen() {
     }
   }
 
+  // ─── Auto-fetch on ticker change ─────────────────────────────────────────────
   const lastFetched = useRef(null)
   useEffect(() => {
     if (!currentTicker) return
@@ -176,8 +200,7 @@ export default function BeritaSentimen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTicker])
 
-  // ─── Derived state ─────────────────────────────────────────────────────────
-  const summary  = news?.summary
+  // ─── Derived state ────────────────────────────────────────────────────────
   const articles = news?.articles || []
 
   const categories = useMemo(() => {
@@ -191,7 +214,6 @@ export default function BeritaSentimen() {
 
   const filtered = articles.filter((a) => filter === "all" || (a.category || "market") === filter)
 
-  // Articles per sector (for per-sector AI)
   const articlesBySector = useMemo(() => {
     const r = {}
     for (const k of ["market", "macro", "geopolitics"]) {
@@ -200,91 +222,61 @@ export default function BeritaSentimen() {
     return r
   }, [articles])
 
-  const posPct       = summary?.positive_pct ?? 0
-  const neuPct       = summary?.neutral_pct  ?? 0
-  const negPct       = summary?.negative_pct ?? 0
-  const score        = summary?.score        ?? 0
-  const overallLabel = summary?.overall_label || "—"
+  // ─── BERT & LLM stats ────────────────────────────────────────────────────────
+  const { bertStats, llmStats } = useMemo(() => {
+    const total = articles.length || 1
+    const bertPos = articles.filter(a => a.sentiment === "positive").length
+    const bertNeu = articles.filter(a => a.sentiment === "neutral").length
+    const bertNeg = articles.filter(a => a.sentiment === "negative").length
+    const bertScore = Math.round(articles.reduce((s, a) => s + (a.score || 0), 0) / total * 100)
+    const bertOverall = bertPos >= bertNeg && bertPos >= bertNeu ? "positive" : bertNeg >= bertPos && bertNeg >= bertNeu ? "negative" : "neutral"
 
-  // Trend range state (3, 7, 14, 30)
-  const [trendRange, setTrendRange] = useState(7)
+    const llmPos = articles.filter(a => a.llm_sentiment === "positive").length
+    const llmNeu = articles.filter(a => a.llm_sentiment === "neutral").length
+    const llmNeg = articles.filter(a => a.llm_sentiment === "negative").length
+    const llmScore = Math.round(articles.reduce((s, a) => s + (a.llm_score || 0), 0) / total * 100)
+    const llmOverall = llmPos >= llmNeg && llmPos >= llmNeu ? "positive" : llmNeg >= llmPos && llmNeg >= llmNeu ? "negative" : "neutral"
 
-  // ─── Trend chart data calculation ──────────────────────────────────────────
-  const chartDataObj = useMemo(() => {
-    if (!articles || articles.length === 0) {
-       return { labels: [], data: [] }
+    return {
+      bertStats: { posPct: Math.round(bertPos/total*100), neuPct: Math.round(bertNeu/total*100), negPct: Math.round(bertNeg/total*100), score: bertScore, overall: bertOverall },
+      llmStats:  { posPct: Math.round(llmPos/total*100),  neuPct: Math.round(llmNeu/total*100),  negPct: Math.round(llmNeg/total*100),  score: llmScore,  overall: llmOverall  },
     }
+  }, [articles])
 
-    // Kelompokkan artikel per tanggal dan hitung total skor sentimennya
+  // ─── Trend chart ──────────────────────────────────────────────────────────────
+  const chartDataObj = useMemo(() => {
+    if (!articles || articles.length === 0) return { labels: [], data: [] }
     const byDate = {}
     articles.forEach(a => {
-      // Prioritaskan skor LLM (jika tidak ada, pakai skor finetune/HF)
-      const score = Math.round((a.llm_score !== undefined ? a.llm_score : (a.score || 0)) * 100)
-      if (!byDate[a.time]) {
-        byDate[a.time] = { sum: 0, count: 0 }
-      }
-      byDate[a.time].sum += score
+      const sc = Math.round((a.llm_score !== undefined ? a.llm_score : (a.score || 0)) * 100)
+      if (!byDate[a.time]) byDate[a.time] = { sum: 0, count: 0 }
+      byDate[a.time].sum += sc
       byDate[a.time].count += 1
     })
-
-    // Rata-rata sentimen per hari
     const avgByDate = {}
-    for (const d in byDate) {
-      avgByDate[d] = byDate[d].sum / byDate[d].count
-    }
-
-    // Untuk forward fill, mulai dengan skor tertua yang tersedia, atau 50 jika kosong
+    for (const d in byDate) avgByDate[d] = byDate[d].sum / byDate[d].count
     const dates = Object.keys(avgByDate).sort()
-    let lastValidScore = dates.length > 0 ? avgByDate[dates[0]] : 50
-
-    const labels = []
-    const data = []
-    const today = new Date()
-    
-    // Bangun data deret waktu ke belakang
+    let lastScore = dates.length > 0 ? avgByDate[dates[0]] : 50
+    const labels = [], data = [], today = new Date()
     for (let i = trendRange - 1; i >= 0; i--) {
-      const d = new Date()
-      d.setDate(today.getDate() - i)
-      
-      const year = d.getFullYear()
-      const month = String(d.getMonth() + 1).padStart(2, '0')
-      const day = String(d.getDate()).padStart(2, '0')
-      const dStr = `${year}-${month}-${day}`
-      
-      let label = ""
-      if (trendRange <= 7) {
-        label = d.toLocaleDateString("id-ID", { weekday: 'short' }) // Sen, Sel, Rab
-      } else {
-        label = d.toLocaleDateString("id-ID", { day: 'numeric', month: 'short' }) // 12 Jun
-      }
-      
+      const d = new Date(); d.setDate(today.getDate() - i)
+      const dStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`
+      const label = trendRange <= 7
+        ? d.toLocaleDateString("id-ID", { weekday: "short" })
+        : d.toLocaleDateString("id-ID", { day: "numeric", month: "short" })
       labels.push(label)
-
-      // Update last score jika hari ini ada data beritanya
-      if (avgByDate[dStr] !== undefined) {
-        lastValidScore = avgByDate[dStr]
-      }
-      data.push(lastValidScore)
+      if (avgByDate[dStr] !== undefined) lastScore = avgByDate[dStr]
+      data.push(lastScore)
     }
-
     return { labels, data }
   }, [articles, trendRange])
 
   const trendData = {
     labels: chartDataObj.labels,
-    datasets: [{
-      data:            chartDataObj.data,
-      borderColor:     "#2dd4a0",
-      backgroundColor: "rgba(45,212,160,0.12)",
-      borderWidth: 1.8,
-      pointRadius: 3,
-      tension: 0.35,
-      fill: true,
-    }],
+    datasets: [{ data: chartDataObj.data, borderColor: "#2dd4a0", backgroundColor: "rgba(45,212,160,0.12)", borderWidth: 1.8, pointRadius: 3, tension: 0.35, fill: true }],
   }
   const trendOpts = {
-    responsive: true,
-    maintainAspectRatio: false,
+    responsive: true, maintainAspectRatio: false,
     plugins: { legend: { display: false }, tooltip: { intersect: false, mode: "index" } },
     scales: {
       x: { grid: { display: false }, ticks: { color: "#505568", font: { size: 9 } } },
@@ -292,7 +284,7 @@ export default function BeritaSentimen() {
     },
   }
 
-  // ─── Render ────────────────────────────────────────────────────────────────
+  // ─── Render ──────────────────────────────────────────────────────────────────
   return (
     <>
       <TickerSearchBar label="Berita &amp; Sentimen">
@@ -305,29 +297,92 @@ export default function BeritaSentimen() {
       <div className="content">
         {err && <div className="error-msg">{err}</div>}
 
-        {/* ── KPI Cards ── */}
+        {/* ── 4 KPI Cards (BERT & LLM side-by-side) ── */}
         <div className="sent-hero">
-          <div className="sh-card sh-green">
-            <div className="kpi-label">Sentimen Positif</div>
-            <div style={St.monoGreen}>{posPct}%</div>
-            <div className="kpi-sub">{summary ? summary.positive + " artikel" : "—"}</div>
-          </div>
-          <div className="sh-card sh-amber">
-            <div className="kpi-label">Sentimen Netral</div>
-            <div style={St.monoAmber}>{neuPct}%</div>
-            <div className="kpi-sub">{summary ? summary.neutral + " artikel" : "—"}</div>
-          </div>
-          <div className="sh-card sh-red">
-            <div className="kpi-label">Sentimen Negatif</div>
-            <div style={St.monoRed}>{negPct}%</div>
-            <div className="kpi-sub">{summary ? summary.negative + " artikel" : "—"}</div>
-          </div>
-          <div className="sh-card sh-blue">
-            <div className="kpi-label">Skor Agregat</div>
-            <div style={St.monoBlue}>{score}/100</div>
-            <div className="kpi-sub">{overallLabel}</div>
-          </div>
+          {[
+            { label: "Sentimen Positif", cls: "sh-green", styleMono: St.monoGreen, pct1: bertStats.posPct, pct2: llmStats.posPct },
+            { label: "Sentimen Netral",  cls: "sh-amber", styleMono: St.monoAmber, pct1: bertStats.neuPct, pct2: llmStats.neuPct },
+            { label: "Sentimen Negatif", cls: "sh-red",   styleMono: St.monoRed,   pct1: bertStats.negPct, pct2: llmStats.negPct },
+            { label: "Skor Agregat",     cls: "sh-blue",  styleMono: St.monoBlue,  pct1: bertStats.score,  pct2: llmStats.score, noPercent: true },
+          ].map(({ label, cls, styleMono, pct1, pct2, noPercent }) => (
+            <div key={label} className={"sh-card " + cls}>
+              <div className="kpi-label">{label}</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                <div>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 2 }}>BERT</div>
+                  <div style={{...styleMono, fontSize: 18}}>{pct1}{noPercent ? "" : "%"}</div>
+                </div>
+                <div style={{ width: 1, height: 24, background: "rgba(255,255,255,0.1)" }} />
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 2 }}>LLM</div>
+                  <div style={{...styleMono, fontSize: 18}}>{pct2}{noPercent ? "" : "%"}</div>
+                </div>
+              </div>
+              <div className="kpi-sub" style={{ marginTop: 8 }}>
+                {noPercent ? "Skala 0-100" : `Dari ${articles.length} artikel`}
+              </div>
+            </div>
+          ))}
         </div>
+
+        {/* ── Perbandingan BERT vs LLM (di bawah cards, di atas list berita) ── */}
+        {news && (
+          <div className="card" style={{ marginBottom: 20 }}>
+            <div className="card-header">
+              <div className="card-title">🤖 Perbandingan Sentimen — Model BERT &amp; LLM</div>
+            </div>
+            <div className="card-body">
+              {/* Score circles */}
+              <div style={{ display: "flex", justifyContent: "space-around", gap: 10, padding: "10px 0 18px 0", borderBottom: "1px solid var(--border-light)", marginBottom: 16 }}>
+                {[
+                  { stats: bertStats, label: "Model (BERT)" },
+                  null, // divider
+                  { stats: llmStats,  label: "LLM (Groq)" },
+                  null,
+                  { // agreement
+                    custom: true,
+                    bg:    bertStats.overall === llmStats.overall ? "rgba(45,212,160,0.1)" : "rgba(245,183,49,0.1)",
+                    bc:    bertStats.overall === llmStats.overall ? "rgba(45,212,160,0.4)" : "rgba(245,183,49,0.4)",
+                    icon:  bertStats.overall === llmStats.overall ? "✓" : "≈",
+                    txt:   bertStats.overall === llmStats.overall ? "Sepakat" : "Berbeda",
+                    txtColor: bertStats.overall === llmStats.overall ? "var(--green)" : "var(--amber)",
+                    sub:   "Konsensus"
+                  }
+                ].map((item, idx) => {
+                  if (item === null) return <div key={idx} style={{ borderLeft: "1px solid var(--border-light)", height: 80, alignSelf: "center" }} />
+                  if (item.custom) return (
+                    <div key={idx} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                      <div className="sent-circle" style={{ background: item.bg, borderColor: item.bc, width: 60, height: 60, borderWidth: 1.5 }}>
+                        <span style={{ fontSize: 22 }}>{item.icon}</span>
+                      </div>
+                      <div style={{ textAlign: "center" }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: item.txtColor }}>{item.txt}</div>
+                        <div style={{ fontSize: 9, color: "var(--text-muted)" }}>{item.sub}</div>
+                      </div>
+                    </div>
+                  )
+                  return (
+                    <div key={idx} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                      <div className="sent-circle" style={{ background: bgClrO(item.stats.overall), borderColor: clrO(item.stats.overall) + "40", width: 60, height: 60, borderWidth: 1.5 }}>
+                        <span className="sent-num" style={{ color: clrO(item.stats.overall), fontSize: 17 }}>{item.stats.score}</span>
+                      </div>
+                      <div style={{ textAlign: "center" }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: clrO(item.stats.overall) }}>{lblO(item.stats.overall)}</div>
+                        <div style={{ fontSize: 9, color: "var(--text-muted)" }}>{item.label}</div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              {/* Progress bars */}
+              <div>
+                <CompareRow label="Positif" pct1={bertStats.posPct} pct2={llmStats.posPct} color="var(--green)" />
+                <CompareRow label="Netral"  pct1={bertStats.neuPct} pct2={llmStats.neuPct} color="var(--amber)" />
+                <CompareRow label="Negatif" pct1={bertStats.negPct} pct2={llmStats.negPct} color="var(--red)" />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Main 2-col layout ── */}
         <div className="row-main-320">
@@ -340,7 +395,6 @@ export default function BeritaSentimen() {
                 <span className="analysis-time">{news ? news.total_articles + " artikel" : ""}</span>
               </div>
               <div className="card-body">
-
                 {/* Filter chips */}
                 <div className="nf-bar">
                   {CAT_KEYS.map((key) => (
@@ -352,7 +406,7 @@ export default function BeritaSentimen() {
                   ))}
                 </div>
 
-                {/* ── Per-sector AI Analysis (shown when non-"all" filter selected) ── */}
+                {/* Per-sector AI */}
                 {filter !== "all" && news && (
                   <div className="ai-summary" style={{ marginTop: 12, marginBottom: 4 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
@@ -378,16 +432,13 @@ export default function BeritaSentimen() {
                 )}
 
                 {busy && <div style={St.emptyNote}>Memuat berita...</div>}
-                {!busy && !filtered.length && (
-                  <div style={St.emptyNote}>Tidak ada berita untuk filter ini.</div>
-                )}
+                {!busy && !filtered.length && <div style={St.emptyNote}>Tidak ada berita untuk filter ini.</div>}
 
                 {filtered.map((a, i) => {
-                  const hfMeta  = SENT_META[a.sentiment]      || SENT_META.neutral
-                  const llmMeta = SENT_META[a.llm_sentiment]  || SENT_META.neutral
+                  const hfMeta  = SENT_META[a.sentiment]     || SENT_META.neutral
+                  const llmMeta = SENT_META[a.llm_sentiment] || SENT_META.neutral
                   return (
                     <div className="eNews-item" key={i}>
-                      {/* Dual score badges */}
                       <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 52 }}>
                         <div className={"eNews-score-badge " + hfMeta.cls}>
                           {Math.round((a.score || 0) * 100)}
@@ -398,12 +449,9 @@ export default function BeritaSentimen() {
                           <span className="esb-sub">LLM: {llmMeta.short}</span>
                         </div>
                       </div>
-
                       <div className="eNews-body">
                         <div className="eNews-title">
-                          {a.url
-                            ? <a href={a.url} target="_blank" rel="noreferrer">{a.title}</a>
-                            : a.title}
+                          {a.url ? <a href={a.url} target="_blank" rel="noreferrer">{a.title}</a> : a.title}
                         </div>
                         <div className="eNews-meta">
                           <span className="eNews-src">{CAT_LABELS[a.category] || a.category}</span>
@@ -422,15 +470,14 @@ export default function BeritaSentimen() {
 
           {/* Right col: distributions + trend */}
           <div className="col-gap14">
-
             {/* Sentiment distribution bar */}
             <div className="card">
               <div className="card-header"><div className="card-title">📊 Distribusi Sentimen</div></div>
               <div className="card-body">
                 {[
-                  { label: "Positif", pct: posPct, color: "var(--green)" },
-                  { label: "Netral",  pct: neuPct, color: "var(--amber)" },
-                  { label: "Negatif", pct: negPct, color: "var(--red)" },
+                  { label: "Positif", pct: bertStats.posPct, color: "var(--green)" },
+                  { label: "Netral",  pct: bertStats.neuPct, color: "var(--amber)" },
+                  { label: "Negatif", pct: bertStats.negPct, color: "var(--red)" },
                 ].map(({ label, pct, color }) => (
                   <div className="sbar-row" key={label}>
                     <span className="sbar-lbl">{label}</span>
@@ -464,13 +511,13 @@ export default function BeritaSentimen() {
             <div className="card">
               <div className="card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div className="card-title">📈 Tren Sentimen</div>
-                <select 
-                   value={trendRange} 
-                   onChange={(e) => setTrendRange(Number(e.target.value))}
-                   style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.1)", color: "var(--text-primary)", borderRadius: 4, padding: "2px 6px", fontSize: 11, outline: "none", cursor: "pointer" }}
+                <select
+                  value={trendRange}
+                  onChange={(e) => setTrendRange(Number(e.target.value))}
+                  style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.1)", color: "var(--text-primary)", borderRadius: 4, padding: "2px 6px", fontSize: 11, outline: "none", cursor: "pointer" }}
                 >
-                  <option value={3} style={{background: "var(--bg-dark)"}}>3 Hari</option>
-                  <option value={7} style={{background: "var(--bg-dark)"}}>7 Hari</option>
+                  <option value={3}  style={{background: "var(--bg-dark)"}}>3 Hari</option>
+                  <option value={7}  style={{background: "var(--bg-dark)"}}>7 Hari</option>
                   <option value={14} style={{background: "var(--bg-dark)"}}>14 Hari</option>
                   <option value={30} style={{background: "var(--bg-dark)"}}>1 Bulan</option>
                 </select>
@@ -485,163 +532,37 @@ export default function BeritaSentimen() {
                 )}
               </div>
             </div>
-
           </div>
         </div>
 
-        {/* ── Kesimpulan Akhir Sentimen (bottom) ── */}
-        {news && (() => {
-          // Hitung ringkasan BERT & LLM dari artikel yang sudah dianalisis
-          const total = articles.length || 1
-
-          // BERT summary
-          const bertPos = articles.filter(a => a.sentiment === "positive").length
-          const bertNeu = articles.filter(a => a.sentiment === "neutral").length
-          const bertNeg = articles.filter(a => a.sentiment === "negative").length
-          const bertScoreAvg = Math.round(articles.reduce((s, a) => s + (a.score || 0), 0) / total * 100)
-          const bertOverall = bertPos >= bertNeg && bertPos >= bertNeu ? "positive" : bertNeg >= bertPos && bertNeg >= bertNeu ? "negative" : "neutral"
-          const bert = {
-            overall: bertOverall,
-            score: bertScoreAvg,
-            positive_pct: Math.round(bertPos / total * 100),
-            neutral_pct: Math.round(bertNeu / total * 100),
-            negative_pct: Math.round(bertNeg / total * 100),
-          }
-
-          // LLM summary
-          const llmPos = articles.filter(a => a.llm_sentiment === "positive").length
-          const llmNeu = articles.filter(a => a.llm_sentiment === "neutral").length
-          const llmNeg = articles.filter(a => a.llm_sentiment === "negative").length
-          const llmScoreAvg = Math.round(articles.reduce((s, a) => s + (a.llm_score || 0), 0) / total * 100)
-          const llmOverall = llmPos >= llmNeg && llmPos >= llmNeu ? "positive" : llmNeg >= llmPos && llmNeg >= llmNeu ? "negative" : "neutral"
-          const llm = {
-            overall: llmOverall,
-            score: llmScoreAvg,
-            positive_pct: Math.round(llmPos / total * 100),
-            neutral_pct: Math.round(llmNeu / total * 100),
-            negative_pct: Math.round(llmNeg / total * 100),
-          }
-
-          // Color helpers
-          const clr = (o) => o === "positive" ? "var(--green)" : o === "negative" ? "var(--red)" : "var(--amber)"
-          const lbl = (o) => o === "positive" ? "Positif" : o === "negative" ? "Negatif" : "Netral"
-          const bgClr = (o) => o === "positive" ? "rgba(45,212,160,0.1)" : o === "negative" ? "rgba(245,94,94,0.1)" : "rgba(245,183,49,0.1)"
-
-          const CompareRow = ({ label, pct1, pct2, color }) => (
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
-                <span style={{ fontWeight: 600 }}>{label}</span>
-                <span style={{ color: "var(--text-muted)", fontSize: 10 }}>BERT: {pct1}% &nbsp;|&nbsp; LLM: {pct2}%</span>
-              </div>
-              {/* BERT track */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <span style={{ fontSize: 8, width: 28, color: "var(--text-muted)", fontWeight: 600 }}>BERT</span>
-                <div className="sbar-track" style={{ flex: 1, height: 4 }}>
-                  <div className="sbar-fill" style={{ width: pct1 + "%", background: color }} />
+        {/* ── Kesimpulan Analisis Groq (paling bawah) ── */}
+        {news && (
+          <div className="card" style={{ marginTop: 20 }}>
+            <div className="card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+              <div className="card-title">✦ Kesimpulan Analisis Groq — BERT vs LLM</div>
+              <button
+                className={"fetch-news-btn " + (overallAiBusy ? "loading" : "")}
+                style={{ padding: "6px 14px", fontSize: 11, minWidth: 180 }}
+                onClick={runOverallAi}
+                disabled={overallAiBusy || !articles.length}
+              >
+                {overallAiBusy && <span className="spin-sm" style={{ borderTopColor: "var(--purple)" }} />}
+                <span className="btn-txt">{overallAiBusy ? "Menganalisis..." : "✦ Analisis Kesimpulan Groq"}</span>
+              </button>
+            </div>
+            <div className="card-body">
+              <div className="ai-box" style={{ background: "rgba(167,139,250,0.05)", border: "1px solid rgba(167,139,250,0.15)", padding: 16, borderRadius: 8 }}>
+                <div style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.8 }}>
+                  {overallAiBusy
+                    ? "Menganalisis seluruh hasil sentimen BERT dan LLM..."
+                    : (overallAi || `Klik "✦ Analisis Kesimpulan Groq" untuk mendapatkan ringkasan AI menyeluruh dari hasil sentimen model BERT dan LLM terhadap berita ${code}.`)}
                 </div>
-                <span style={{ fontSize: 10, width: 32, textAlign: "right", color }}>{pct1}%</span>
-              </div>
-              {/* LLM track */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 8, width: 28, color: "var(--text-muted)", fontWeight: 600 }}>LLM</span>
-                <div className="sbar-track" style={{ flex: 1, height: 4, opacity: 0.7 }}>
-                  <div className="sbar-fill" style={{ width: pct2 + "%", background: color }} />
-                </div>
-                <span style={{ fontSize: 10, width: 32, textAlign: "right", color }}>{pct2}%</span>
               </div>
             </div>
-          )
-
-          return (
-            <div className="card" style={{ marginTop: 20 }}>
-              <div className="card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-                <div className="card-title">🤖 Kesimpulan Sentimen — Model BERT &amp; LLM</div>
-                <button
-                  className={"fetch-news-btn " + (overallAiBusy ? "loading" : "")}
-                  style={{ padding: "6px 14px", fontSize: 11, minWidth: 170 }}
-                  onClick={runOverallAi}
-                  disabled={overallAiBusy || !articles.length}
-                >
-                  {overallAiBusy && <span className="spin-sm" style={{ borderTopColor: "var(--purple)" }} />}
-                  <span className="btn-txt">{overallAiBusy ? "Menganalisis..." : "✦ Analisis Kesimpulan Groq"}</span>
-                </button>
-              </div>
-              <div className="card-body">
-
-                {/* ── Dual score circles ── */}
-                <div style={{ display: "flex", justifyContent: "space-around", gap: 10, padding: "10px 0 18px 0", borderBottom: "1px solid var(--border-light)", marginBottom: 16 }}>
-                  {/* BERT */}
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                    <div className="sent-circle" style={{ background: bgClr(bert.overall), borderColor: clr(bert.overall) + "40", width: 60, height: 60, borderWidth: 1.5 }}>
-                      <span className="sent-num" style={{ color: clr(bert.overall), fontSize: 17 }}>{bert.score}</span>
-                    </div>
-                    <div style={{ textAlign: "center" }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: clr(bert.overall) }}>{lbl(bert.overall)}</div>
-                      <div style={{ fontSize: 9, color: "var(--text-muted)" }}>Model (BERT)</div>
-                    </div>
-                  </div>
-
-                  {/* Divider */}
-                  <div style={{ borderLeft: "1px solid var(--border-light)", height: 80, alignSelf: "center" }} />
-
-                  {/* LLM */}
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                    <div className="sent-circle" style={{ background: bgClr(llm.overall), borderColor: clr(llm.overall) + "40", width: 60, height: 60, borderWidth: 1.5 }}>
-                      <span className="sent-num" style={{ color: clr(llm.overall), fontSize: 17 }}>{llm.score}</span>
-                    </div>
-                    <div style={{ textAlign: "center" }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: clr(llm.overall) }}>{lbl(llm.overall)}</div>
-                      <div style={{ fontSize: 9, color: "var(--text-muted)" }}>LLM (Groq)</div>
-                    </div>
-                  </div>
-
-                  {/* Divider */}
-                  <div style={{ borderLeft: "1px solid var(--border-light)", height: 80, alignSelf: "center" }} />
-
-                  {/* Agreement */}
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                    <div className="sent-circle" style={{
-                      background: bert.overall === llm.overall ? "rgba(45,212,160,0.1)" : "rgba(245,183,49,0.1)",
-                      borderColor: bert.overall === llm.overall ? "rgba(45,212,160,0.4)" : "rgba(245,183,49,0.4)",
-                      width: 60, height: 60, borderWidth: 1.5
-                    }}>
-                      <span style={{ fontSize: 22 }}>{bert.overall === llm.overall ? "✓" : "≈"}</span>
-                    </div>
-                    <div style={{ textAlign: "center" }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: bert.overall === llm.overall ? "var(--green)" : "var(--amber)" }}>
-                        {bert.overall === llm.overall ? "Sepakat" : "Berbeda"}
-                      </div>
-                      <div style={{ fontSize: 9, color: "var(--text-muted)" }}>Konsensus</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* ── Dual progress bars per sentiment ── */}
-                <div style={{ marginBottom: 16 }}>
-                  <CompareRow label="Positif" pct1={bert.positive_pct} pct2={llm.positive_pct} color="var(--green)" />
-                  <CompareRow label="Netral"  pct1={bert.neutral_pct}  pct2={llm.neutral_pct}  color="var(--amber)" />
-                  <CompareRow label="Negatif" pct1={bert.negative_pct} pct2={llm.negative_pct} color="var(--red)" />
-                </div>
-
-                {/* ── Groq AI text analysis ── */}
-                <div className="ai-box" style={{ background: "rgba(167,139,250,0.05)", border: "1px solid rgba(167,139,250,0.15)", padding: 16, borderRadius: 8 }}>
-                  <div className="ai-lbl" style={{ color: "var(--purple)", fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 10 }}>
-                    ✦ Groq · Kesimpulan Analisis Sentimen Berita — {code}
-                  </div>
-                  <div style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.8 }}>
-                    {overallAiBusy
-                      ? "Menganalisis seluruh hasil sentimen BERT dan LLM..."
-                      : (overallAi || `Klik "✦ Analisis Kesimpulan Groq" untuk mendapatkan ringkasan AI menyeluruh dari hasil sentimen model BERT dan LLM terhadap berita ${code}.`)}
-                  </div>
-                </div>
-
-              </div>
-            </div>
-          )
-        })()}
+          </div>
+        )}
 
       </div>
     </>
   )
 }
-

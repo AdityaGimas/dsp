@@ -215,21 +215,38 @@ Balas HANYA JSON valid berikut tanpa teks lain. Ganti SETIAP placeholder <...> d
 class NewsReq(BaseModel):
     ticker: str
     articles: List[dict]
-    sentiment_summary: dict
+    sentiment_summary: Optional[dict] = None
+    bert_summary: Optional[dict] = None
+    llm_summary: Optional[dict] = None
+    sector_filter: Optional[str] = "all"
     api_key: Optional[str] = None
 
 
 @router.post("/news-summary")
 async def groq_news_summary(req: NewsReq):
     """Model: llama-3.3-70b-versatile - ringkas berita + insight."""
-    s   = req.sentiment_summary
+    s   = req.sentiment_summary or {}
+    b   = req.bert_summary or {}
+    l   = req.llm_summary or {}
+    
     txt = "\n".join(f"- [{a.get('source', '')}] {a.get('title', '')}" for a in req.articles[:10])
+    
+    sent_text = f"SENTIMEN TERUKUR: Positif {s.get('positive_pct', 0)}% | Netral {s.get('neutral_pct', 0)}% | Negatif {s.get('negative_pct', 0)}%"
+    if b and l:
+        sent_text = (
+            f"KONSENSUS SENTIMEN:\n"
+            f"- Model BERT: Positif {b.get('positive_pct', 0)}% | Netral {b.get('neutral_pct', 0)}% | Negatif {b.get('negative_pct', 0)}%\n"
+            f"- Model LLM : Positif {l.get('positive_pct', 0)}% | Netral {l.get('neutral_pct', 0)}% | Negatif {l.get('negative_pct', 0)}%\n"
+            f"Tugas tambahan: Dalam 'summary', bandingkan hasil sentimen BERT vs LLM ini, sebutkan apakah mereka sepakat atau berbeda pandangan, dan hubungkan dengan narasi berita utama."
+        )
+
     prompt = f"""Kamu analis pasar modal Indonesia. Ringkas berita saham {req.ticker} secara objektif.
+Sektor Fokus: {req.sector_filter.upper()}
 
 BERITA ({len(req.articles)} artikel):
 {txt}
 
-SENTIMEN TERUKUR: Positif {s.get('positive_pct', 0)}% | Netral {s.get('neutral_pct', 0)}% | Negatif {s.get('negative_pct', 0)}%
+{sent_text}
 
 ATURAN:
 1. "sentiment_direction" & "news_recommendation" HARUS konsisten dengan komposisi sentimen di atas dan isi berita:
@@ -237,6 +254,7 @@ ATURAN:
    - mayoritas Negatif -> cenderung "Bearish" / "SELL"
    - campuran/seimbang -> "Netral" / "HOLD"
 2. Jangan mengarang berita yang tidak ada di daftar.
+3. Fokuskan ringkasan pada Sektor: {req.sector_filter.upper()} (jika bukan 'ALL').
 
 Balas HANYA JSON valid berikut tanpa teks lain (ganti tiap placeholder <...> dengan nilai nyata):
 """ + NEWS_SCHEMA
