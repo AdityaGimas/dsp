@@ -258,6 +258,7 @@ body{font-family:var(--font-body);background:var(--bg-app);color:var(--text-prim
 .loading-overlay{display:flex;align-items:center;justify-content:center;padding:20px;color:var(--text-muted);font-size:12px;gap:8px}
 .spinner{width:14px;height:14px;border:2px solid rgba(255,255,255,0.1);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeInDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
 .error-msg{color:var(--red);font-size:12px;padding:8px;background:rgba(245,94,94,0.08);border-radius:var(--r-sm);border:1px solid rgba(245,94,94,0.15)}
 .analysis-time{font-size:10px;color:var(--text-muted);white-space:nowrap;flex-shrink:0}
 ::-webkit-scrollbar{width:4px;height:4px}
