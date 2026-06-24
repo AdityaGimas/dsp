@@ -291,6 +291,7 @@ export default function Overview() {
         sentiment_summary: news?.sentiment_summary || undefined,
         groq_news: news || undefined,
         macro_data: macroData || undefined,
+        indicators: indicators || undefined,
       }
       const res = await api.groqFinalReco(payload)
       setFinalReco(res)
@@ -669,8 +670,8 @@ export default function Overview() {
               </div>
               <div className="chart-legend">
                 <span className="leg-item"><span className="leg-line" style={S.legSolidBlue} />Historis</span>
-                <span className="leg-item"><span className="leg-line" style={{ background: "#2dd4a0", borderTop: "2px dashed #2dd4a0", height: 0 }} />XGBoost ± Rentang</span>
-                <span className="leg-item"><span className="leg-line" style={S.legDashPurple} />LLM ± Rentang</span>
+                <span className="leg-item"><span className="leg-line" style={{ background: "#2dd4a0", borderTop: "2px dashed #2dd4a0", height: 0 }} />XGBoost</span>
+                <span className="leg-item"><span className="leg-line" style={S.legDashPurple} />LLM</span>
               </div>
               <div className="card-body">
                 <div className="chart-wrap">
@@ -740,7 +741,7 @@ export default function Overview() {
                   <span className="btn-txt">{finalRecoBusy ? "Menganalisis..." : "▶ Minta AI Putuskan"}</span>
                 </button>
               </div>
-              <div className="card-body">{renderFinalReco(mlPred, groqTech, news, finalReco, finalRecoBusy)}</div>
+              <div className="card-body">{renderFinalReco(mlPred, groqTech, news, finalReco, finalRecoBusy, fetchFinalReco)}</div>
             </div>
           </div>
 
@@ -980,11 +981,15 @@ function renderPredGrid(ml, grok, info) {
   return cells
 }
 
-function renderFinalReco(ml, grok, news, apiRes, busy) {
+function renderFinalReco(ml, grok, news, apiRes, busy, onGenerate) {
   if (busy) {
     return (
-      <div className="loading-overlay">
-        <span className="spinner" /> AI sedang menyusun rekomendasi akhir...
+      <div className="loading-overlay" style={{ flexDirection: "column", gap: 10, padding: "24px 0" }}>
+        <span className="spinner" />
+        <div style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
+          AI sedang menganalisis semua faktor...<br />
+          <span style={{ fontSize: 10 }}>Ini mungkin memerlukan 10–20 detik</span>
+        </div>
       </div>
     )
   }
@@ -995,20 +1000,68 @@ function renderFinalReco(ml, grok, news, apiRes, busy) {
       </div>
     )
   }
+
+  // ── Empty state: tampilkan placeholder CTA sebelum user klik tombol ──
+  if (!apiRes) {
+    return (
+      <div className="reco-empty-state">
+        <div className="reco-empty-icon">🎯</div>
+        <div className="reco-empty-title">Analisis AI Belum Dijalankan</div>
+        <div className="reco-empty-desc">
+          Dapatkan rekomendasi akhir komprehensif yang menganalisis secara mendalam seluruh indikator pasar:
+        </div>
+        <div className="reco-empty-factors">
+          {[
+            { icon: "⚡", label: "Prediksi XGBoost" },
+            { icon: "🔮", label: "Analisis LLM" },
+            { icon: "📈", label: "RSI & MACD" },
+            { icon: "📊", label: "Moving Average" },
+            { icon: "🎰", label: "Bollinger & Stochastic" },
+            { icon: "📰", label: "Sentimen Berita" },
+            { icon: "🌍", label: "Makro Ekonomi" },
+            { icon: "💹", label: "Volume & Momentum" },
+          ].map((f, i) => (
+            <div className="reco-empty-factor-chip" key={i}>
+              <span>{f.icon}</span> {f.label}
+            </div>
+          ))}
+        </div>
+        
+        <button className="reco-empty-gen-btn" onClick={onGenerate}>
+          ✨ Minta AI Putuskan
+        </button>
+
+        <div className="reco-empty-note">
+          ✦ Output berupa rekomendasi akhir lengkap dengan penjelasan per faktor, entry, stop loss, dan target harga
+        </div>
+      </div>
+    )
+  }
+
   const scores = { BUY: 1, HOLD: 0, SELL: -1 }
   let finalRec = "HOLD"
   let finalConf = 50
   let stopLoss = 0
   let entry = 0
   let target = 0
+  let target2 = 0
+  let rrRatio = 0
+  let signalAgreement = "—"
+  let summaryText = ""
+  let factors = []
   const mlConf = ml.confidence || 0.5
-  
+
   if (apiRes && apiRes.final_recommendation) {
-    finalRec = apiRes.final_recommendation
-    finalConf = Math.round((apiRes.overall_confidence || 0.5) * 100)
-    stopLoss = apiRes.stop_loss || 0
-    entry = apiRes.entry_price || 0
-    target = apiRes.take_profit_1 || apiRes.take_profit_2 || 0
+    finalRec        = apiRes.final_recommendation
+    finalConf       = Math.round((apiRes.overall_confidence || 0.5) * 100)
+    stopLoss        = apiRes.stop_loss || 0
+    entry           = apiRes.entry_price || 0
+    target          = apiRes.take_profit_1 || 0
+    target2         = apiRes.take_profit_2 || 0
+    rrRatio         = apiRes.risk_reward_ratio || 0
+    signalAgreement = apiRes.signal_agreement || "—"
+    summaryText     = apiRes.summary || ""
+    factors         = apiRes.factor_analysis || []
   } else {
     let totalWeight = 0
     let weighted = 0
@@ -1027,21 +1080,22 @@ function renderFinalReco(ml, grok, news, apiRes, busy) {
       totalWeight += 0.25
     }
     const norm = totalWeight > 0 ? weighted / totalWeight : 0
-    finalRec = norm > 0.15 ? "BUY" : norm < -0.15 ? "SELL" : "HOLD"
+    finalRec  = norm > 0.15 ? "BUY" : norm < -0.15 ? "SELL" : "HOLD"
     finalConf = Math.round(Math.min(Math.abs(norm) * 100 + 50, 95))
     const curRaw = ml.entry || ml.predictions?.[0]?.price || 0
     stopLoss = ml.stop_loss || Math.round(curRaw * (finalRec === "BUY" ? 0.95 : 1.05))
-    entry = ml.entry || curRaw
-    target = ml.target || grok?.price_max_5d || grok?.price_range_5d?.max || Math.round(curRaw * (finalRec === "BUY" ? 1.06 : 0.94))
+    entry    = ml.entry || curRaw
+    target   = ml.target || grok?.price_max_5d || grok?.price_range_5d?.max || Math.round(curRaw * (finalRec === "BUY" ? 1.06 : 0.94))
   }
-  const dotClass = finalRec === "BUY" ? "buy" : finalRec === "SELL" ? "sell" : "hold"
-  const color = recColor(finalRec)
-  const colorStyle = { color }
-  const redV = { color: "var(--red)" }
-  const blueV = { color: "var(--blue)" }
-  const greenV = { color: "var(--green)" }
+
+  const dotClass     = finalRec === "BUY" ? "buy" : finalRec === "SELL" ? "sell" : "hold"
+  const color        = recColor(finalRec)
+  const colorStyle   = { color }
+  const redV         = { color: "var(--red)" }
+  const blueV        = { color: "var(--blue)" }
+  const greenV       = { color: "var(--green)" }
   const summaryStyle = { color: "var(--purple)" }
-  const mlActionStyle = { color: recColor(ml.recommendation) }
+  const mlActionStyle   = { color: recColor(ml.recommendation) }
   const grokActionStyle = { color: grok ? recColor(grok.recommendation) : "var(--text-muted)" }
 
   const sources = [`XGBoost (${Math.round(mlConf * 100)}%)`]
@@ -1050,13 +1104,22 @@ function renderFinalReco(ml, grok, news, apiRes, busy) {
   if (apiRes) sources.push(`Analisis Sentimen & Makro LLM`)
 
   const sentOverall = news?.sentiment_summary?.overall
-  const sentAction = news ? (sentOverall === "positive" ? "Positif" : sentOverall === "negative" ? "Negatif" : "Netral") : "—"
+  const sentAction  = news ? (sentOverall === "positive" ? "Positif" : sentOverall === "negative" ? "Negatif" : "Netral") : "—"
   const sentActionStyle = {
     color: news ? recColor(sentOverall === "positive" ? "BUY" : sentOverall === "negative" ? "SELL" : "HOLD") : "var(--text-muted)",
   }
 
+  const agreeBadgeStyle = {
+    background: signalAgreement === "Sepakat" ? "rgba(45,212,160,0.15)" : signalAgreement === "Mayoritas" ? "rgba(245,183,49,0.15)" : "rgba(245,94,94,0.15)",
+    color: signalAgreement === "Sepakat" ? "var(--green)" : signalAgreement === "Mayoritas" ? "var(--amber)" : "var(--red)",
+    fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4, display: "inline-block", letterSpacing: "0.04em",
+  }
+
+  const hasFactors = factors && factors.length > 0
+
   return (
     <>
+      {/* ── Top 3 source summary cards ── */}
       <div className="reco-sources">
         <div className="reco-src-card">
           <div className="reco-src-label">⚡ Model XGBoost</div>
@@ -1074,25 +1137,106 @@ function renderFinalReco(ml, grok, news, apiRes, busy) {
           <div className="reco-src-conf">{news ? "Skor: " + (news.sentiment_summary?.score || "—") + "/100" : "Klik Ambil Berita"}</div>
         </div>
       </div>
+
       <div className="reco-divider" />
+
+      {/* ── Final verdict ── */}
       <div className="reco-action">
         <div className={"action-dot " + dotClass} />
         <div className="action-label" style={colorStyle}>{recLabel(finalRec)}</div>
+        {signalAgreement !== "—" && <span style={agreeBadgeStyle}>{signalAgreement}</span>}
         <div className="conf-block">
           <div className="conf-lbl">Tingkat Keyakinan</div>
           <div className="conf-val" style={colorStyle}>{finalConf + "%"}</div>
         </div>
       </div>
-      <div className="reco-desc">
-        {"Rekomendasi akhir dihitung dari: "}
-        <strong>{sources.join(" · ")}</strong>.
-        {apiRes?.summary ? <><br /><em style={summaryStyle}>{`“${apiRes.summary}”`}</em></> : (grok?.summary ? <><br /><em style={summaryStyle}>{`“${grok.summary}”`}</em></> : null)}
+
+      {/* ── Summary ── */}
+      {(summaryText || grok?.summary) && (
+        <div className="reco-desc">
+          <em style={summaryStyle}>{`"${summaryText || grok?.summary}"`}</em>
+        </div>
+      )}
+      {!summaryText && !grok?.summary && (
+        <div className="reco-desc">
+          {"Rekomendasi dihitung dari: "}
+          <strong>{sources.join(" · ")}</strong>.
+        </div>
+      )}
+
+      {/* ── Per-factor analysis breakdown (only when AI analysis is available) ── */}
+      {hasFactors && (
+        <div className="factor-analysis-section">
+          <div className="factor-section-title">
+            <span>📊 Analisis Faktor Lengkap</span>
+            <span className="factor-section-count">{factors.length} faktor</span>
+          </div>
+          <div className="factor-list">
+            {factors.map((f, idx) => {
+              const fColor   = f.signal === "BUY" ? "var(--green)" : f.signal === "SELL" ? "var(--red)" : "var(--amber)"
+              const fBg      = f.signal === "BUY" ? "rgba(45,212,160,0.12)" : f.signal === "SELL" ? "rgba(245,94,94,0.12)" : "rgba(245,183,49,0.12)"
+              const fBorder  = f.signal === "BUY" ? "rgba(45,212,160,0.25)" : f.signal === "SELL" ? "rgba(245,94,94,0.25)" : "rgba(245,183,49,0.25)"
+              const scoreW   = Math.min(Math.max(f.score || 0, 0), 100)
+              const weightW  = Math.min(Math.max(f.weight || 0, 0), 100)
+              const sigLabel = f.signal === "BUY" ? "BELI" : f.signal === "SELL" ? "JUAL" : "TAHAN"
+              return (
+                <div className="factor-item" key={idx} style={{ borderLeft: `3px solid ${fBorder}` }}>
+                  <div className="factor-header">
+                    <div className="factor-name">{f.factor}</div>
+                    <div className="factor-badges">
+                      <span className="factor-weight-lbl">Bobot {weightW}%</span>
+                      <span className="factor-signal-badge" style={{ background: fBg, color: fColor, borderColor: fBorder }}>
+                        {sigLabel}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="factor-bars">
+                    <div className="factor-bar-row">
+                      <span className="factor-bar-lbl">Kekuatan</span>
+                      <div className="factor-bar-track">
+                        <div className="factor-bar-fill" style={{ width: scoreW + "%", background: fColor }} />
+                      </div>
+                      <span className="factor-bar-pct" style={{ color: fColor }}>{scoreW}</span>
+                    </div>
+                    <div className="factor-bar-row">
+                      <span className="factor-bar-lbl">Bobot</span>
+                      <div className="factor-bar-track">
+                        <div className="factor-bar-fill" style={{ width: weightW + "%", background: "rgba(167,139,250,0.5)" }} />
+                      </div>
+                      <span className="factor-bar-pct" style={{ color: "var(--purple)" }}>{weightW}</span>
+                    </div>
+                  </div>
+                  {f.explanation && (
+                    <div className="factor-explanation">{f.explanation}</div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Price levels ── */}
+      <div className="reco-levels" style={{ marginTop: hasFactors ? 16 : 0 }}>
+        <div className="lvl-item">
+          <div className="lvl-label">Stop Loss</div>
+          <div className="lvl-val" style={redV}>{fmt(stopLoss)}</div>
+        </div>
+        <div className="lvl-item">
+          <div className="lvl-label">Entry</div>
+          <div className="lvl-val" style={blueV}>{fmt(entry)}</div>
+        </div>
+        <div className="lvl-item">
+          <div className="lvl-label">Target 1</div>
+          <div className="lvl-val" style={greenV}>{fmt(target)}</div>
+          {target2 > 0 && <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>T2: <span style={greenV}>{fmt(target2)}</span></div>}
+        </div>
       </div>
-      <div className="reco-levels">
-        <div className="lvl-item"><div className="lvl-label">Stop Loss</div><div className="lvl-val" style={redV}>{fmt(stopLoss)}</div></div>
-        <div className="lvl-item"><div className="lvl-label">Entry</div><div className="lvl-val" style={blueV}>{fmt(entry)}</div></div>
-        <div className="lvl-item"><div className="lvl-label">Target</div><div className="lvl-val" style={greenV}>{fmt(target)}</div></div>
-      </div>
+      {rrRatio > 0 && (
+        <div style={{ textAlign: "right", fontSize: 10, color: "var(--text-muted)", marginTop: 6 }}>
+          Risk/Reward: <span style={{ color: rrRatio >= 2 ? "var(--green)" : "var(--amber)", fontWeight: 700 }}>{rrRatio.toFixed(2)}x</span>
+        </div>
+      )}
     </>
   )
 }

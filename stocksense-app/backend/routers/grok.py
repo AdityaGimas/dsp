@@ -144,7 +144,19 @@ FINAL_SCHEMA = (
     '"signal_agreement": "Sepakat|Mayoritas|Bertentangan", '
     '"entry_price": <angka>, "stop_loss": <angka>, '
     '"take_profit_1": <angka>, "take_profit_2": <angka>, '
-    '"risk_reward_ratio": <angka>, "summary": "<2 kalimat>"}'
+    '"risk_reward_ratio": <angka>, "summary": "<2-3 kalimat ringkasan keputusan>", '
+    '"factor_analysis": ['
+    '{"factor": "Prediksi ML (XGBoost)", "signal": "BUY|SELL|HOLD", "weight": <0-100>, "score": <0-100>, "explanation": "<penjelasan 1-2 kalimat>"},'
+    '{"factor": "Analisis Teknikal LLM", "signal": "BUY|SELL|HOLD", "weight": <0-100>, "score": <0-100>, "explanation": "<penjelasan>"},'
+    '{"factor": "RSI (Momentum)", "signal": "BUY|SELL|HOLD", "weight": <0-100>, "score": <0-100>, "explanation": "<penjelasan>"},'
+    '{"factor": "MACD (Tren)", "signal": "BUY|SELL|HOLD", "weight": <0-100>, "score": <0-100>, "explanation": "<penjelasan>"},'
+    '{"factor": "Moving Average", "signal": "BUY|SELL|HOLD", "weight": <0-100>, "score": <0-100>, "explanation": "<penjelasan>"},'
+    '{"factor": "Bollinger Bands", "signal": "BUY|SELL|HOLD", "weight": <0-100>, "score": <0-100>, "explanation": "<penjelasan>"},'
+    '{"factor": "Stochastic", "signal": "BUY|SELL|HOLD", "weight": <0-100>, "score": <0-100>, "explanation": "<penjelasan>"},'
+    '{"factor": "Volume", "signal": "BUY|SELL|HOLD", "weight": <0-100>, "score": <0-100>, "explanation": "<penjelasan>"},'
+    '{"factor": "Sentimen Berita", "signal": "BUY|SELL|HOLD", "weight": <0-100>, "score": <0-100>, "explanation": "<penjelasan>"},'
+    '{"factor": "Makro Ekonomi", "signal": "BUY|SELL|HOLD", "weight": <0-100>, "score": <0-100>, "explanation": "<penjelasan>"}'
+    ']}'
 )
 
 
@@ -235,45 +247,112 @@ class FinalReq(BaseModel):
     sentiment_summary: Optional[dict] = None
     groq_news: Optional[dict] = None
     macro_data: Optional[dict] = None
+    indicators: Optional[dict] = None
     api_key: Optional[str] = None
 
 
 @router.post("/final-recommendation")
 async def final_recommendation(req: FinalReq):
-    """Model: llama-3.3-70b-versatile - gabung semua sinyal -> Entry/SL/TP."""
-    ml   = req.ml_prediction  or {}
-    gt   = req.groq_technical or {}
-    s    = req.sentiment_summary or {}
-    gn   = req.groq_news      or {}
-    ml_t = (ml.get("predictions") or [{}])[0].get("price", "?")
+    """Model: llama-3.3-70b-versatile - gabung semua sinyal -> Entry/SL/TP + factor_analysis."""
+    ml    = req.ml_prediction  or {}
+    gt    = req.groq_technical or {}
+    s     = req.sentiment_summary or {}
+    gn    = req.groq_news      or {}
     macro = req.macro_data or {}
+    ind   = req.indicators or {}
 
+    ml_t  = (ml.get("predictions") or [{}])[0].get("price", "?")
+    ml_p1 = (ml.get("predictions") or [{}, {}, {}])
+    ml_preds = " | ".join(
+        f"H+{i+1}: Rp {p.get('price','?'):,} ({p.get('change_pct', 0):+.1f}%)"
+        for i, p in enumerate(ml_p1[:3]) if p.get('price')
+    ) or "?"
+
+    # --- Indikator teknikal detail ---
+    rsi   = ind.get('rsi', {})
+    macd  = ind.get('macd', {})
+    ma    = ind.get('moving_average', {})
+    bb    = ind.get('bollinger_bands', {})
+    stoch = ind.get('stochastic', {})
+    vol   = ind.get('volume_ratio', {})
+    ma_txt = "Golden Cross (MA20>MA50, bullish)" if ma.get('golden_cross') else "Death Cross (MA20<MA50, bearish)"
+
+    ind_str = ""
+    if ind:
+        ind_str = f"""
+INDIKATOR TEKNIKAL:
+- RSI(14): {rsi.get('value','?')} → {rsi.get('signal','?')} (oversold <30 bullish, overbought >70 bearish)
+- MACD: nilai {macd.get('value','?')}, histogram {macd.get('histogram','?')} → {macd.get('signal','?')}
+- MA20/MA50: {ma_txt}, MA20={ma.get('ma20','?')}, MA50={ma.get('ma50','?')}
+- Bollinger Bands: posisi harga {bb.get('position','?')}, upper={bb.get('upper','?')}, lower={bb.get('lower','?')}
+- Stochastic: K={stoch.get('value','?')} → {stoch.get('signal','?')}
+- Volume Ratio: {vol.get('value','?')}x (>1.5 = volume tinggi konfirmasi sinyal)"""
+
+    # --- Makro detail ---
     macro_str = ""
     if macro:
-        ihsg = macro.get("IHSG", {}).get("value", "?")
-        usd = macro.get("USDIDR", {}).get("value", "?")
-        bi = macro.get("BIRate", {}).get("value", "?")
-        macro_str = f"KONDISI MAKRO: IHSG {ihsg} | USD/IDR {usd} | BI Rate {bi}%"
+        ihsg     = macro.get("IHSG", {})
+        usd      = macro.get("USDIDR", {})
+        bi       = macro.get("BIRate", {})
+        gdp      = macro.get("GDP", {})
+        infl     = macro.get("Inflation", {})
+        macro_str = f"""
+KONDISI MAKRO INDONESIA:
+- IHSG: {ihsg.get('value','?')} ({ihsg.get('change_pct',0):+.2f}%, {'Bullish' if (ihsg.get('change_pct') or 0) > 0 else 'Bearish'})
+- USD/IDR: Rp {usd.get('value','?'):,} ({usd.get('change_pct',0):+.2f}%, {'Rupiah melemah' if (usd.get('change_pct') or 0) > 0 else 'Rupiah menguat'})
+- BI Rate: {bi.get('value','?')}% ({bi.get('desc','?')})
+- PDB (YoY): {gdp.get('value','?')}% ({gdp.get('desc','?')})
+- Inflasi (YoY): {infl.get('value','?')}% ({infl.get('desc','?')})"""
 
-    prompt = f"""Kamu chief analyst saham Indonesia. Gabungkan semua sinyal untuk {req.ticker} secara objektif.
+    # --- Sentimen detail ---
+    sent_str = ""
+    if s or gn:
+        sent_str = f"""
+SENTIMEN BERITA:
+- Finetune Model: Positif {s.get('positive_pct',0)}% | Netral {s.get('neutral_pct',0)}% | Negatif {s.get('negative_pct',0)}% | Skor: {s.get('score',50)}/100 → {s.get('overall','?')}
+- LLM Groq: Rekomendasi {gn.get('news_recommendation','?')} (conf {round(gn.get('news_confidence',0)*100)}%), arah {gn.get('sentiment_direction','?')}
+- Tema utama: {gn.get('main_theme', 'tidak diketahui')}
+- Faktor kunci: {', '.join(gn.get('key_factors', []))}"""
+
+    # --- LLM teknikal detail ---
+    grok_str = ""
+    if gt:
+        reasons = gt.get('reasons', [])
+        grok_str = f"""
+PREDIKSI LLM TEKNIKAL:
+- Rekomendasi: {gt.get('recommendation','?')} (conf {round(gt.get('confidence',0)*100)}%)
+- H+1: Rp {gt.get('price_tomorrow','?'):,} (rentang {gt.get('price_tomorrow_low','?')}-{gt.get('price_tomorrow_high','?')})
+- H+2: Rp {gt.get('day2_price','?'):,} | H+3: Rp {gt.get('day3_price','?'):,}
+- Alasan: {'; '.join(reasons)}
+- Ringkasan: {gt.get('summary','?')}"""
+
+    prompt = f"""Kamu chief analyst saham Indonesia. Analisis KOMPREHENSIF dan putuskan rekomendasi FINAL untuk {req.ticker}.
 
 HARGA SEKARANG: Rp {req.current_price:,.0f}
+
+PREDIKSI ML (XGBoost):
+- Rekomendasi: {ml.get('recommendation','?')} (conf {round(ml.get('confidence',0)*100)}%, akurasi model {ml.get('model_accuracy',0):.1f}%)
+- Prediksi: {ml_preds}
+- Stop Loss: Rp {ml.get('stop_loss','?'):,} | Target: Rp {ml.get('target','?'):,}
+{grok_str}
+{ind_str}
+{sent_str}
 {macro_str}
-SINYAL ML: {ml.get('recommendation', '?')} conf {round(ml.get('confidence', 0) * 100)}% target {ml_t}
-SINYAL GROQ TEKNIKAL: {gt.get('recommendation', '?')} conf {round(gt.get('confidence', 0) * 100)}% estimasi {gt.get('price_tomorrow', '?')}
-SINYAL BERITA: {gn.get('news_recommendation', '?')} conf {round(gn.get('news_confidence', 0) * 100)}% skor sentimen {s.get('score', 50)}/100
 
 ATURAN WAJIB:
-1. Timbang semua sinyal. Mayoritas bullish -> condong "BUY"; mayoritas bearish -> condong "SELL"; bila saling bertentangan -> "HOLD" dan set "signal_agreement" = "Bertentangan".
-2. "final_recommendation" HARUS konsisten dengan level harga:
+1. Evaluasi SETIAP faktor di atas dan berikan signal (BUY/SELL/HOLD), weight (kepentingan 0-100), score (kekuatan sinyal 0-100), dan explanation detail dalam bahasa Indonesia.
+2. "weight" mencerminkan seberapa penting faktor itu dalam keputusan. Semua weight harus masuk akal (ML & teknikal lebih tinggi dari individual indikator).
+3. Timbang semua sinyal. Mayoritas bullish -> condong "BUY"; mayoritas bearish -> condong "SELL"; bila bertentangan -> "HOLD".
+4. "final_recommendation" HARUS konsisten dengan level harga:
    - "BUY"  : take_profit_1 & take_profit_2 DI ATAS entry_price, stop_loss DI BAWAH entry_price
    - "SELL" : take_profit_1 & take_profit_2 DI BAWAH entry_price, stop_loss DI ATAS entry_price
    - "HOLD" : level rapat di sekitar harga sekarang
-3. "risk_reward_ratio" = jarak ke take_profit_1 dibagi jarak ke stop_loss, harus > 0.
-4. Semua harga dalam Rupiah dan masuk akal terhadap harga sekarang.
+5. "risk_reward_ratio" = jarak ke take_profit_1 dibagi jarak ke stop_loss, harus > 0.
+6. Semua harga dalam Rupiah dan masuk akal terhadap harga sekarang Rp {req.current_price:,.0f}.
+7. factor_analysis harus berisi TEPAT 10 faktor sesuai schema.
 
-Balas HANYA JSON valid berikut tanpa teks lain (ganti tiap placeholder <...> dengan angka nyata, bukan string):
+Balas HANYA JSON valid berikut tanpa teks lain (ganti tiap placeholder <...> dengan nilai nyata):
 """ + FINAL_SCHEMA
-    res  = await groq_chat_rotate([{"role": "user", "content": prompt}], MODEL_FINAL_RECO, max_tokens=400, api_key=req.api_key, json_mode=True)
+    res  = await groq_chat_rotate([{"role": "user", "content": prompt}], MODEL_FINAL_RECO, max_tokens=1200, api_key=req.api_key, json_mode=True)
     data = parse_json(res["choices"][0]["message"]["content"])
     return {"ticker": req.ticker, **data}
