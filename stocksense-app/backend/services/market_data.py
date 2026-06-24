@@ -77,6 +77,8 @@ def get_stock_info(ticker: str):
         "market_cap": info.get("marketCap"),
         "volume": info.get("volume"),
         "avg_volume": info.get("averageVolume"),
+        "day_high": info.get("dayHigh") or (float(hist["High"].iloc[-1]) if not hist.empty else current_price),
+        "day_low": info.get("dayLow") or (float(hist["Low"].iloc[-1]) if not hist.empty else current_price),
         "fifty_two_week_high": info.get("fiftyTwoWeekHigh"),
         "fifty_two_week_low": info.get("fiftyTwoWeekLow"),
         "pe_ratio": info.get("trailingPE"),

@@ -129,7 +129,8 @@ TECH_SCHEMA = (
     '"price_range_3d": {"min": <angka>, "max": <angka>}, '
     '"recommendation": "BUY|SELL|HOLD", "confidence": <0.0-1.0>, '
     '"reasons": ["alasan singkat 1", "alasan 2", "alasan 3"], '
-    '"summary": "<2 kalimat: arah harga + alasan utama>"}'
+    '"summary": "<2 kalimat: arah harga + alasan utama>", '
+    '"detailed_explanation": "<paragraf naratif yang menjelaskan SEMUA nilai indikator secara lengkap>"}'
 )
 
 NEWS_SCHEMA = (
@@ -196,6 +197,7 @@ ATURAN WAJIB (ikuti dengan ketat):
    - selain itu (relatif datar)              -> "HOLD"
    DILARANG memberi "BUY" bila harga diprediksi turun, atau "SELL" bila diprediksi naik.
 4. "confidence" (0.0-1.0) mencerminkan seberapa kuat & sepakat indikator; turunkan bila sinyal bertentangan.
+5. "detailed_explanation" WAJIB berisi penjelasan naratif lengkap mengenai semua nilai indikator (RSI, MACD, MA, Bollinger, Stochastic, Volume) secara detail.
 
 Balas HANYA JSON valid berikut tanpa teks lain. Ganti SETIAP placeholder <...> dengan hasil analisismu (angka Rupiah, bukan contoh):
 """ + TECH_SCHEMA

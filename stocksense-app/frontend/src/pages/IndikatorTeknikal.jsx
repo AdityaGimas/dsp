@@ -31,23 +31,7 @@ function sigStyle(signal) {
   return c === "buy" ? St.green : c === "sell" ? St.red : St.amber
 }
 
-// dummy support/resistance & pivot (backend belum menyediakan)
-const SR = [
-  { label: "Resistance 2", price: 10250, color: "var(--red)", strength: 4 },
-  { label: "Resistance 1", price: 9850, color: "var(--red)", strength: 3 },
-  { label: "Pivot", price: 9520, color: "var(--blue)", strength: 5 },
-  { label: "Support 1", price: 9180, color: "var(--green)", strength: 3 },
-  { label: "Support 2", price: 8900, color: "var(--green)", strength: 4 },
-]
-const PIVOTS = [
-  { lbl: "S3", val: 8750, col: "var(--green)" },
-  { lbl: "S2", val: 8900, col: "var(--green)" },
-  { lbl: "S1", val: 9180, col: "var(--green)" },
-  { lbl: "PP", val: 9520, col: "var(--blue)" },
-  { lbl: "R1", val: 9850, col: "var(--red)" },
-  { lbl: "R2", val: 10250, col: "var(--red)" },
-  { lbl: "R3", val: 10580, col: "var(--red)" },
-]
+
 
 export default function IndikatorTeknikal() {
   const { currentTicker } = useApp()
@@ -56,6 +40,24 @@ export default function IndikatorTeknikal() {
   const [info, setInfo] = useState(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState("")
+  const [aiData, setAiData] = useState(null)
+  const [aiBusy, setAiBusy] = useState(false)
+
+  const fetchAi = () => {
+    if (!ind || !info) return
+    setAiBusy(true)
+    api.groqTechnical({
+      ticker: currentTicker,
+      current_price: info.current_price,
+      indicators: ind
+    }).then(res => {
+      setAiData(res)
+      setAiBusy(false)
+    }).catch(err => {
+      console.error(err)
+      setAiBusy(false)
+    })
+  }
 
   const load = (refresh = false) => {
     setBusy(true)
@@ -116,6 +118,26 @@ export default function IndikatorTeknikal() {
   const rsiNeedleStyle = rsi ? { left: Math.min(Math.max(rsi.value, 0), 100) + "%", background: "var(--blue)" } : { left: "50%", background: "var(--blue)" }
   const stochNeedleStyle = stoch ? { left: Math.min(Math.max(stoch.value, 0), 100) + "%", background: "var(--purple)" } : { left: "50%", background: "var(--purple)" }
 
+  let calculatedSR = []
+  if (info && info.day_high && info.day_low && info.current_price) {
+    const H = info.day_high
+    const L = info.day_low
+    const C = info.current_price
+    const PP = (H + L + C) / 3
+    const R1 = (2 * PP) - L
+    const R2 = PP + (H - L)
+    const S1 = (2 * PP) - H
+    const S2 = PP - (H - L)
+
+    calculatedSR = [
+      { label: "Resistance 2", price: R2, color: "var(--red)", strength: 4 },
+      { label: "Resistance 1", price: R1, color: "var(--red)", strength: 3 },
+      { label: "Pivot", price: PP, color: "var(--blue)", strength: 5 },
+      { label: "Support 1", price: S1, color: "var(--green)", strength: 3 },
+      { label: "Support 2", price: S2, color: "var(--green)", strength: 4 },
+    ]
+  }
+
   const cards = ind
     ? [
         { name: "RSI (14)", val: rsi.value, sig: rsi.signal, desc: "Momentum overbought/oversold" },
@@ -164,7 +186,7 @@ export default function IndikatorTeknikal() {
                 <div className="card-header"><div className="card-title">RSI (14)</div><span className="sig-signal" style={sigStyle(rsi?.signal)}>{rsi?.signal || "—"}</span></div>
                 <div className="card-body">
                   <div className="ind-val-big" style={St.blue}>{rsi ? rsi.value : "—"}</div>
-                  <div className="ind-subtitle">Relative Strength Index</div>
+                  <div className="ind-subtitle" style={{marginBottom: 8, whiteSpace: "normal", height: "auto"}}>RSI mengukur kecepatan perubahan harga untuk mengidentifikasi kondisi jenuh beli (overbought) atau jenuh jual (oversold).</div>
                   <div className="osc-wrap" style={{marginTop: 16}}><div className="osc-track"><div className="osc-needle" style={rsiNeedleStyle} /></div><div className="osc-labels"><span>0</span><span>30</span><span>70</span><span>100</span></div></div>
                 </div>
               </div>
@@ -172,7 +194,7 @@ export default function IndikatorTeknikal() {
                 <div className="card-header"><div className="card-title">MACD</div><span className="sig-signal" style={sigStyle(macd?.signal)}>{macd?.signal || "—"}</span></div>
                 <div className="card-body">
                   <div className="ind-val-big" style={sigStyle(macd?.signal)}>{macd ? macd.value : "—"}</div>
-                  <div className="ind-subtitle">Signal {macd ? macd.signal_line : "—"} · Hist {macd ? macd.histogram : "—"}</div>
+                  <div className="ind-subtitle" style={{marginBottom: 8, whiteSpace: "normal", height: "auto"}}>MACD menunjukkan hubungan antar moving average untuk mendeteksi arah tren. <br/>Signal {macd ? macd.signal_line : "—"} · Hist {macd ? macd.histogram : "—"}</div>
                   <div className="chart-wrap" style={St.chart120}><Bar data={macdData} options={macdOpts} /></div>
                 </div>
               </div>
@@ -182,6 +204,7 @@ export default function IndikatorTeknikal() {
               <div className="card">
                 <div className="card-header"><div className="card-title">Bollinger Bands</div><span className="sig-signal sig-signal-hold">{bb?.position || "—"}</span></div>
                 <div className="card-body">
+                  <div className="ind-subtitle" style={{marginBottom: 12, whiteSpace: "normal", height: "auto"}}>Bollinger Bands mengukur batas pergerakan harga, mendeteksi jika harga sudah terlalu tinggi/rendah dari normalnya.</div>
                   <div className="ind-stat-row"><span className="ind-sk">Upper</span><span className="ind-sv">{bb ? fmt(bb.upper) : "—"}</span></div>
                   <div className="ind-stat-row"><span className="ind-sk">Mid (MA20)</span><span className="ind-sv">{bb ? fmt(bb.mid) : "—"}</span></div>
                   <div className="ind-stat-row"><span className="ind-sk">Lower</span><span className="ind-sv">{bb ? fmt(bb.lower) : "—"}</span></div>
@@ -192,7 +215,7 @@ export default function IndikatorTeknikal() {
                 <div className="card-header"><div className="card-title">Stochastic & Volume</div><span className="sig-signal" style={sigStyle(stoch?.signal)}>{stoch?.signal || "—"}</span></div>
                 <div className="card-body">
                   <div className="ind-val-big" style={St.amber}>{stoch ? stoch.value : "—"}</div>
-                  <div className="ind-subtitle">Stochastic Oscillator</div>
+                  <div className="ind-subtitle" style={{marginBottom: 8, whiteSpace: "normal", height: "auto"}}>Stochastic membandingkan harga terhadap rentangnya untuk melihat momentum, Volume menunjukkan aktivitas transaksi.</div>
                   <div className="osc-wrap" style={{marginTop: 16, marginBottom: 16}}><div className="osc-track"><div className="osc-needle" style={stochNeedleStyle} /></div><div className="osc-labels"><span>0</span><span>20</span><span>80</span><span>100</span></div></div>
                   <div className="vol-stat"><span className="vol-sk">Volume Ratio</span><span className="vol-sv" style={sigStyle(vol?.signal)}>{vol ? vol.value + "x" : "—"}</span></div>
                   <div className="vol-stat"><span className="vol-sk">Status Volume</span><span className="vol-sv">{vol?.signal || "—"}</span></div>
@@ -214,7 +237,7 @@ export default function IndikatorTeknikal() {
             <div className="card">
               <div className="card-header"><div className="card-title">🎯 Support / Resistance</div></div>
               <div className="card-body">
-                {SR.map((s, i) => {
+                {calculatedSR.length > 0 ? calculatedSR.map((s, i) => {
                   const dotStyle = { background: s.color }
                   const priceStyle = { color: s.color }
                   const strengthStyle = { color: s.color }
@@ -230,25 +253,8 @@ export default function IndikatorTeknikal() {
                       </div>
                     </div>
                   )
-                })}
-                <div style={St.miniNote}>* Level estimasi pivot — indikasi, bukan saran transaksi.</div>
-              </div>
-            </div>
-
-            <div className="card">
-              <div className="card-header"><div className="card-title">📍 Pivot Points</div></div>
-              <div className="card-body">
-                <div className="pivot-grid">
-                  {PIVOTS.map((p, i) => {
-                    const valStyle = { color: p.col }
-                    return (
-                      <div className="pivot-cell" key={i}>
-                        <div className="pivot-lbl">{p.lbl}</div>
-                        <div className="pivot-val" style={valStyle}>{fmt(p.val)}</div>
-                      </div>
-                    )
-                  })}
-                </div>
+                }) : <div style={{fontSize: 12, color: "var(--text-muted)", textAlign: "center", padding: "12px 0"}}>Data harga tidak lengkap untuk menghitung pivot.</div>}
+                <div style={St.miniNote}>* Level dihitung dari Harga Tinggi, Rendah, Penutupan terkini.</div>
               </div>
             </div>
           </div>
@@ -258,10 +264,22 @@ export default function IndikatorTeknikal() {
           <div className="card-header"><div className="card-title">🤖 Analisis AI</div></div>
           <div className="card-body">
             <div className="ai-box" style={St.aiBox}>
-              <div className="ai-lbl">Groq · Analisis Teknikal</div>
-              <div style={St.aiPlaceholder}>
-                Buka tab “Overview” lalu jalankan “Analisis Groq” untuk mendapatkan interpretasi naratif indikator teknikal {code} berbasis LLM. Indikator di halaman ini diambil langsung dari data pasar real-time.
+              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: "wrap", gap: 8}}>
+                <div className="ai-lbl" style={{marginBottom: 0}}>Groq · Analisis Teknikal</div>
+                <button className={"fetch-news-btn " + (aiBusy ? "loading" : "")} style={{padding: "6px 12px", minWidth: 160}} onClick={fetchAi} disabled={aiBusy || !ind}>
+                  {aiBusy && <span className="spin-sm" style={{borderTopColor: "var(--purple)"}} />}
+                  <span className="btn-txt">{aiBusy ? "Menganalisis..." : "▶ Jalankan Analisis AI"}</span>
+                </button>
               </div>
+              {aiData ? (
+                <div style={{fontSize: 13, color: "var(--text-primary)", lineHeight: 1.6}}>
+                  {aiData.detailed_explanation || aiData.summary || "Penjelasan tidak tersedia."}
+                </div>
+              ) : (
+                <div style={St.aiPlaceholder}>
+                  Klik tombol "Jalankan Analisis AI" untuk mendapatkan interpretasi naratif secara kalimat lengkap tentang SEMUA nilai indikator teknikal {code} berbasis LLM.
+                </div>
+              )}
             </div>
           </div>
         </div>
