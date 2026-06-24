@@ -35,9 +35,9 @@ export function recLabel(r) {
 export function indColor(s) {
   if (!s) return "var(--text-muted)"
   const l = s.toLowerCase()
-  if (l.includes("beli") || l.includes("bullish") || l.includes("atas") || l.includes("oversold"))
+  if (l.includes("beli") || l.includes("buy") || l.includes("bullish") || l.includes("atas") || l.includes("oversold") || l.includes("positif") || l.includes("positive") || l.includes("kondusif"))
     return "var(--green)"
-  if (l.includes("jual") || l.includes("bearish") || l.includes("overbought"))
+  if (l.includes("jual") || l.includes("sell") || l.includes("bearish") || l.includes("overbought") || l.includes("negatif") || l.includes("negative"))
     return "var(--red)"
   return "var(--amber)"
 }

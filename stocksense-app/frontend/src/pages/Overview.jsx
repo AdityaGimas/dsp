@@ -725,18 +725,18 @@ export default function Overview() {
             <div className="kpi-val">
               {mlPred && groqTech ? (
                 mlPred.recommendation === groqTech.recommendation ? (
-                  <span style={{ color: mlPred.recommendation === "BUY" ? "var(--green)" : mlPred.recommendation === "SELL" ? "var(--red)" : "var(--amber)" }}>
+                  <span style={{ color: indColor(recLabel(mlPred.recommendation)) }}>
                     {recLabel(mlPred.recommendation)}
                   </span>
                 ) : (
                   <span style={{ fontSize: "0.8em" }}>
                     <span style={{ color: "var(--text-muted)" }}>XGB: </span>
-                    <span style={{ color: mlPred.recommendation === "BUY" ? "var(--green)" : mlPred.recommendation === "SELL" ? "var(--red)" : "var(--amber)" }}>
+                    <span style={{ color: indColor(recLabel(mlPred.recommendation)) }}>
                       {recLabel(mlPred.recommendation)}
                     </span>
                     <span style={{ color: "var(--border)", margin: "0 4px" }}>|</span>
                     <span style={{ color: "var(--text-muted)" }}>LLM: </span>
-                    <span style={{ color: groqTech.recommendation === "BUY" ? "var(--green)" : groqTech.recommendation === "SELL" ? "var(--red)" : "var(--amber)" }}>
+                    <span style={{ color: indColor(recLabel(groqTech.recommendation)) }}>
                       {recLabel(groqTech.recommendation)}
                     </span>
                   </span>
@@ -753,7 +753,7 @@ export default function Overview() {
           {/* Card 2: Ringkasan Indikator Teknikal */}
           <div className="kpi-card kpi-c-purple">
             <div className="kpi-label">Indikator Teknikal</div>
-            <div className="kpi-val" style={{ color: ov.signal ? (ov.signal.toLowerCase() === "buy" ? "var(--green)" : ov.signal.toLowerCase() === "sell" ? "var(--red)" : "var(--amber)") : "var(--text-muted)" }}>
+            <div className="kpi-val" style={{ color: ov.signal ? indColor(ov.signal) : "var(--text-muted)" }}>
               {ov.signal ? ov.signal.toUpperCase() : "Menunggu..."}
             </div>
             <div className="kpi-sub">
@@ -764,7 +764,7 @@ export default function Overview() {
           {/* Card 3: Ringkasan Sentimen */}
           <div className="kpi-card kpi-c-teal">
             <div className="kpi-label">Berita dan Sentimen</div>
-            <div className="kpi-val" style={{ color: news ? ((sentModel === "llm" ? llmSummary.overall_label : sm.overall_label).toLowerCase() === "positive" ? "var(--green)" : (sentModel === "llm" ? llmSummary.overall_label : sm.overall_label).toLowerCase() === "negative" ? "var(--red)" : "var(--amber)") : "var(--text-muted)" }}>
+            <div className="kpi-val" style={{ color: news ? indColor(sentModel === "llm" ? llmSummary.overall_label : sm.overall_label) : "var(--text-muted)" }}>
               {news ? (sentModel === "llm" ? llmSummary.overall_label : sm.overall_label).toUpperCase() : "Menunggu..."}
             </div>
             <div className="kpi-sub">
@@ -775,7 +775,7 @@ export default function Overview() {
           {/* Card 4: Ringkasan Makro Ekonomi */}
           <div className="kpi-card kpi-c-amber">
             <div className="kpi-label">Makro Ekonomi</div>
-            <div className="kpi-val" style={{ color: macroData ? (macroData.IHSG?.change_pct > 0 ? "var(--green)" : "var(--amber)") : "var(--text-muted)" }}>
+            <div className="kpi-val" style={{ color: macroData ? indColor(macroData.IHSG?.change_pct > 0 ? "KONDUSIF" : "BERHATI-HATI") : "var(--text-muted)" }}>
               {macroData ? (macroData.IHSG?.change_pct > 0 ? "KONDUSIF" : "BERHATI-HATI") : "Menunggu..."}
             </div>
             <div className="kpi-sub">
