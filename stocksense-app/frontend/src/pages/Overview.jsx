@@ -673,7 +673,17 @@ export default function Overview() {
 
   return (
     <>
-      <TickerSearchBar label="Pilih Saham" />
+      <TickerSearchBar label="Pilih Saham">
+        <button
+          className={"fetch-news-btn " + (isRefreshing ? "loading" : "")}
+          onClick={refreshAll}
+          disabled={isRefreshing}
+          style={{ height: 28, padding: "0 12px", borderRadius: 14, fontSize: 11, background: "rgba(45,212,160,0.1)", color: "var(--green)", borderColor: "rgba(45,212,160,0.2)" }}
+        >
+          {isRefreshing ? <span className="spin-sm" style={{ borderTopColor: "var(--green)", width: 12, height: 12, marginRight: 6 }} /> : <span style={{ marginRight: 4 }}>↻</span>}
+          <span className="btn-txt" style={{ color: "var(--green)" }}>{isRefreshing ? "Memuat..." : "Refresh"}</span>
+        </button>
+      </TickerSearchBar>
 
       <div className="content">
         <div className="stock-header">
@@ -912,11 +922,10 @@ export default function Overview() {
 
             <div className="card">
               <div className="card-header">
-                <div className="card-title">🔮 Prediksi Teknikal — Perbandingan</div>
+                <div className="card-title">🔮 Prediksi Teknikal</div>
               </div>
               <div className="card-body">
                 <div className="dual-pred-grid">{renderDualPred(mlPred, groqTech, groqTechBusy, info)}</div>
-                {mlPred && groqTech ? renderAgree(mlPred, groqTech) : null}
                 <div className="pred-grid">{renderPredGrid(mlPred, groqTech, info)}</div>
               </div>
             </div>
@@ -1033,12 +1042,18 @@ function renderDualPred(ml, grok, busy, info) {
   const rangeStyle = { background: "rgba(167,139,250,0.12)", color: "var(--purple)" }
   const emptyStyle = { padding: "10px 0", fontSize: 11, color: "var(--text-muted)", textAlign: "center" }
 
-  const mlBody = ml ? (
+  const mlBody = ml ? (() => {
+    const mlPreds = ml.predictions?.slice(0, 3) || []
+    const pMin = mlPreds.length ? Math.min(...mlPreds.map(p => p.price_low || p.price)) : 0
+    const pMax = mlPreds.length ? Math.max(...mlPreds.map(p => p.price_high || p.price)) : 0
+    const fChg = mlPreds[0]?.change_pct || 0
+    
+    return (
     <>
       <div className="pred-src-badge badge-ml">⚡ Model XGBoost — 3 Hari</div>
-      <div className="pred-src-price">{fmt(ml.predictions?.[0]?.price)}</div>
-      <span className={"pred-src-chg " + (ml.predictions?.[0]?.change_pct >= 0 ? "chg-pos-bg" : "chg-neg-bg")}>
-        {(ml.predictions?.[0]?.change_pct >= 0 ? "+" : "") + (ml.predictions?.[0]?.change_pct?.toFixed(2) || 0) + "% H+1"}
+      <div className="pred-src-price" style={{ fontSize: 20 }}>{fmt(pMin)} – {fmt(pMax)}</div>
+      <span className={"pred-src-chg " + (fChg >= 0 ? "chg-pos-bg" : "chg-neg-bg")} style={{ padding: "2px 8px", borderRadius: 4, display: "inline-block", marginBottom: 8 }}>
+        {(fChg >= 0 ? "+" : "") + fChg.toFixed(2) + "% H+1"}
       </span>
       <div className="pred-src-meta">
         <div className="pred-src-row"><span className="pred-src-k">Akurasi Model</span><span className="pred-src-v">{(ml.model_accuracy?.toFixed(1) || "—") + "%"}</span></div>
@@ -1055,7 +1070,8 @@ function renderDualPred(ml, grok, busy, info) {
         ))}
       </div>
     </>
-  ) : (
+    )
+  })() : (
     <>
       <div className="pred-src-badge badge-ml">⚡ Model XGBoost</div>
       <div className="loading-overlay" style={pad10}><span className="spinner" /></div>
@@ -1116,21 +1132,6 @@ function renderDualPred(ml, grok, busy, info) {
       <div className="pred-source-card psc-ml">{mlBody}</div>
       <div className="pred-source-card psc-grok">{grokBody}</div>
     </>
-  )
-}
-
-function renderAgree(ml, grok) {
-  const agree = ml.recommendation === grok.recommendation
-  const txtStyle = { fontSize: 11 }
-  return (
-    <div className={"pred-agree" + (agree ? "" : " disagree")}>
-      <span className={"agree-dot" + (agree ? "" : " disagree")} />
-      <span style={txtStyle}>
-        {agree
-          ? `Kedua sumber sepakat: ${recLabel(ml.recommendation)} — sinyal lebih kuat`
-          : `Sumber berbeda pendapat: XGBoost → ${recLabel(ml.recommendation)}, LLM → ${recLabel(grok.recommendation)} — pertimbangkan dengan hati-hati`}
-      </span>
-    </div>
   )
 }
 
