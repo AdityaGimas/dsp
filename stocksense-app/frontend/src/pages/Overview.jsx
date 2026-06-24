@@ -75,19 +75,28 @@ const CAT_LABELS = {
 
 // ── MA helpers (module-level, stable ref) ─────────────────────────────
 function calcMA(data, n) {
-  return data.map((_, i) => {
+  // Pass 1: hitung MA normal (null untuk n-1 titik pertama)
+  const result = data.map((_, i) => {
     if (i < n - 1) return null
     const slice = data.slice(i - n + 1, i + 1)
     const sum = slice.reduce((a, b) => a + (b ?? 0), 0)
     return parseFloat((sum / n).toFixed(2))
   })
+  // Pass 2: back-fill — isi null di kiri dengan nilai MA pertama
+  const firstValid = result.find((v) => v !== null)
+  if (firstValid != null) {
+    for (let i = 0; i < result.length; i++) {
+      if (result[i] === null) result[i] = firstValid
+      else break
+    }
+  }
+  return result
 }
 
 const MA_COLORS = {
-  7:   { color: "#facc15", label: "MA 7" },
+  5:   { color: "#facc15", label: "MA 5" },
   20:  { color: "#f97316", label: "MA 20" },
-  50:  { color: "#a78bfa", label: "MA 50" },
-  200: { color: "#f43f5e", label: "MA 200" },
+  50:  { color: "#22d3ee", label: "MA 50" },
 }
 
 
@@ -407,7 +416,7 @@ export default function Overview() {
       }
     ]
 
-    // ── MA datasets ────────────────────────────────────────────────
+    // ── MA datasets: hanya historis, tidak diperpanjang ke area prediksi
     maPeriods.forEach((p) => {
       const maData = calcMA(closes, p)
       const meta = MA_COLORS[p] || { color: "#888", label: `MA ${p}` }
@@ -418,7 +427,7 @@ export default function Overview() {
         borderWidth: 1.5,
         pointRadius: 0,
         pointHoverRadius: 3,
-        tension: 0.3,
+        tension: 0,
         fill: false,
         borderDash: [],
         _isMA: true,
@@ -799,9 +808,10 @@ export default function Overview() {
         <div className="main-grid">
           <div className="left-col">
             <div className="card">
-              <div className="card-header">
+              <div className="card-header" style={{ flexWrap: "wrap", gap: 8 }}>
                 <div className="card-title">📈 Harga Historis & Prediksi — {code}</div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginLeft: "auto" }}>
+                  {/* Period selector */}
                   <div className="tab-group">
                     {periods.map((p) => (
                       <span
@@ -813,32 +823,50 @@ export default function Overview() {
                       </span>
                     ))}
                   </div>
+                  {/* MA toggles inline */}
+                  <span style={{ color: "var(--border)", fontSize: 12 }}>|</span>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>MA:</span>
+                  {[5, 20, 50].map((p) => {
+                    const active = maPeriods.includes(p)
+                    const meta = MA_COLORS[p]
+                    return (
+                      <span
+                        key={p}
+                        onClick={() => setMaPeriods(prev =>
+                          prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
+                        )}
+                        style={{
+                          cursor: "pointer",
+                          fontSize: 11,
+                          fontWeight: 500,
+                          padding: "2px 8px",
+                          borderRadius: 4,
+                          border: `1px solid ${active ? meta.color : "rgba(255,255,255,0.08)"}`,
+                          color: active ? meta.color : "var(--text-muted)",
+                          background: active ? `${meta.color}18` : "transparent",
+                          userSelect: "none",
+                          transition: "all 0.18s",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={`${active ? "Sembunyikan" : "Tampilkan"} MA ${p}`}
+                      >
+                        {p}
+                      </span>
+                    )
+                  })}
                 </div>
               </div>
-              {/* ── MA Selector ── */}
-              <div className="chart-legend" style={{ flexWrap: "wrap", gap: "8px 16px" }}>
+              <div className="chart-legend">
                 <span className="leg-item"><span className="leg-line" style={S.legSolidBlue} />Historis</span>
                 <span className="leg-item"><span className="leg-line" style={{ background: "#2dd4a0", borderTop: "2px dashed #2dd4a0", height: 0 }} />XGBoost</span>
                 <span className="leg-item"><span className="leg-line" style={S.legDashPurple} />LLM</span>
-                <span style={{ color: "var(--text-muted)", fontSize: 10, marginLeft: 4 }}>|</span>
-                {[7, 20, 50, 200].map((p) => {
-                  const active = maPeriods.includes(p)
-                  const meta = MA_COLORS[p]
+                {maPeriods.length > 0 && (
+                  <span style={{ color: "var(--text-muted)", fontSize: 10, marginLeft: 2 }}>|</span>
+                )}
+                {maPeriods.map((p) => {
+                  const meta = MA_COLORS[p] || { color: "#888", label: `MA ${p}` }
                   return (
-                    <span
-                      key={p}
-                      className="leg-item"
-                      onClick={() => setMaPeriods(prev =>
-                        prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
-                      )}
-                      style={{
-                        cursor: "pointer",
-                        opacity: active ? 1 : 0.35,
-                        userSelect: "none",
-                        transition: "opacity 0.2s",
-                      }}
-                      title={`${active ? "Sembunyikan" : "Tampilkan"} MA ${p}`}
-                    >
+                    <span key={p} className="leg-item">
                       <span className="leg-line" style={{ background: meta.color }} />
                       {meta.label}
                     </span>
@@ -859,7 +887,7 @@ export default function Overview() {
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 11, color: "var(--text-muted)" }}>MA Vol:</span>
                   <div className="tab-group">
-                    {[5, 10, 20, 50].map((p) => (
+                    {[5, 20, 50].map((p) => (
                       <span
                         key={p}
                         className={"tab " + (volumeMaPeriod === p ? "active-tab" : "")}
