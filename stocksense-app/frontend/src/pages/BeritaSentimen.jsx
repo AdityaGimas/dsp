@@ -65,12 +65,14 @@ function CompareRow({ label, pct1, pct2, color }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function BeritaSentimen() {
-  const { currentTicker } = useApp()
+  const { currentTicker, newsCache, fetchNewsForTicker } = useApp()
   const code = currentTicker.replace(".JK", "")
 
-  const [news, setNews] = useState(null)
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState("")
+  const nc = newsCache[currentTicker] || {}
+  const news = nc.data || null
+  const busy = nc.busy || false
+  const err = nc.err || ""
+
   const [filter, setFilter] = useState("all")
   const [sectorAi, setSectorAi] = useState({})
   const [sectorAiBusy, setSectorAiBusy] = useState({})
@@ -79,45 +81,6 @@ export default function BeritaSentimen() {
   const [compareOpen, setCompareOpen] = useState(false)
   const [newsCountLimit, setNewsCountLimit] = useState(20)
   const [activeModel, setActiveModel] = useState("both") // "bert", "llm", "both"
-
-  // ─── Fetch pipeline ─────────────────────────────────────────────────────────
-  async function fetchNews() {
-    setBusy(true)
-    setErr("")
-    setSectorAi({})
-    setOverallAi("")
-    try {
-      const newsData = await api.getNews(currentTicker, 50)
-      if (!newsData.articles || !newsData.articles.length)
-        throw new Error("Tidak ada berita ditemukan. Coba lagi nanti.")
-
-      const sentData = await api.predictSentiment(
-        currentTicker,
-        newsData.articles.map((a) => ({
-          title: a.title,
-          content: a.content || "",
-          category: a.category || "market",
-        })),
-      )
-
-      const merged = newsData.articles.map((a, i) => ({
-        ...a,
-        category: sentData.results[i]?.category || a.category || "market",
-        sentiment: sentData.results[i]?.sentiment || "neutral",
-        sentiment_label: sentData.results[i]?.label || "Netral",
-        score: sentData.results[i]?.score ?? 0,
-        llm_sentiment: sentData.results[i]?.llm_sentiment || "neutral",
-        llm_label: sentData.results[i]?.llm_label || "Netral",
-        llm_score: sentData.results[i]?.llm_score ?? 0,
-      }))
-
-      setNews({ total_articles: sentData.total_articles, articles: merged, summary: sentData.summary })
-    } catch (e) {
-      setErr(e.message)
-    } finally {
-      setBusy(false)
-    }
-  }
 
   // ─── Per-sector AI ──────────────────────────────────────────────────────────
   async function runSectorAi(sector, articlesForSector) {
@@ -181,13 +144,12 @@ export default function BeritaSentimen() {
   }
 
   // ─── Auto-fetch on ticker change ─────────────────────────────────────────────
-  const lastFetched = useRef(null)
   useEffect(() => {
-    if (!currentTicker) return
-    if (lastFetched.current === currentTicker) return
-    lastFetched.current = currentTicker
-    setNews(null); setSectorAi({}); setOverallAi(""); setErr("")
-    fetchNews()
+    if (currentTicker) {
+      setSectorAi({})
+      setOverallAi("")
+      fetchNewsForTicker(currentTicker)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTicker])
 
@@ -239,7 +201,7 @@ export default function BeritaSentimen() {
   return (
     <>
       <TickerSearchBar label="Berita &amp; Sentimen">
-        <button className={"fetch-news-btn " + (busy ? "loading" : "")} onClick={fetchNews} disabled={busy}>
+        <button className={"fetch-news-btn " + (busy ? "loading" : "")} onClick={() => { setSectorAi({}); setOverallAi(""); fetchNewsForTicker(currentTicker, true); }} disabled={busy}>
           <span className="spin-sm" />
           <span className="btn-txt">{busy ? "Memuat berita..." : "↻ Ambil Berita"}</span>
         </button>

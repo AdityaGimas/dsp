@@ -101,7 +101,7 @@ const MA_COLORS = {
 
 
 export default function Overview() {
-  const { currentTicker, refreshTrigger, isRefreshing, setIsRefreshing } = useApp()
+  const { currentTicker, refreshTrigger, isRefreshing, setIsRefreshing, newsCache, fetchNewsForTicker } = useApp()
 
   const [info, setInfo] = useState(null)
   const [hist, setHist] = useState([])
@@ -111,8 +111,6 @@ export default function Overview() {
   const [indicators, setIndicators] = useState(null)
   const [mlPred, setMlPred] = useState(null)
   const [groqTech, setGroqTech] = useState(null)
-  const [news, setNews] = useState(null)
-  const [aiSummary, setAiSummary] = useState("")
   const [sentModel, setSentModel] = useState("compare")
   const [macroData, setMacroData] = useState(null)
   const [finalReco, setFinalReco] = useState(null)
@@ -120,10 +118,15 @@ export default function Overview() {
 
   const [groqTechBusy, setGroqTechBusy] = useState(false)
   const [groqTechErr, setGroqTechErr] = useState("")
-  const [newsBusy, setNewsBusy] = useState(false)
-  const [newsErr, setNewsErr] = useState("")
   const [groqTechTs, setGroqTechTs] = useState(null)
-  const [newsTs, setNewsTs] = useState(null)
+
+  // ─── News/sentimen dari shared AppContext cache ────────────────────────────
+  const nc = newsCache[currentTicker] || {}
+  const news = nc.data || null
+  const newsBusy = nc.busy || false
+  const newsErr = nc.err || ""
+  const aiSummary = nc.aiSummary || ""
+  const newsTs = nc.ts || null
 
   useEffect(() => {
     if (refreshTrigger > 0) {
@@ -138,24 +141,13 @@ export default function Overview() {
     const t = currentTicker
     setGroqTech(null)
     setGroqTechErr("")
-    setNews(null)
-    setNewsErr("")
-    setAiSummary("")
     setGroqTechTs(null)
-    setNewsTs(null)
     setFinalReco(null)
 
     const cache = loadCache(t)
-    if (cache) {
-      if (cache.groqTech) {
-        setGroqTech(cache.groqTech.d)
-        setGroqTechTs(cache.groqTech.ts)
-      }
-      if (cache.news) {
-        setNews(cache.news.d)
-        setNewsTs(cache.news.ts)
-      }
-      if (cache.groqNewsSummary) setAiSummary(cache.groqNewsSummary.d)
+    if (cache?.groqTech) {
+      setGroqTech(cache.groqTech.d)
+      setGroqTechTs(cache.groqTech.ts)
     }
 
     setInfo(null)
@@ -222,7 +214,8 @@ export default function Overview() {
       if (mac.status === "fulfilled") setMacroData(mac.value.data)
       setIsRefreshing(false)
     })
-    fetchNews()
+    // Force refresh berita+sentimen melewati cache
+    fetchNewsForTicker(t, true)
     runGroqTechnical()
   }
 
@@ -251,65 +244,6 @@ export default function Overview() {
     }
   }
 
-  async function fetchNews() {
-    setNewsBusy(true)
-    setNewsErr("")
-    try {
-      // 1. Ambil berita + konten dari backend (50 artikel agar konsisten dengan halaman sentimen)
-      const newsData = await api.getNews(currentTicker, 50)
-      if (!newsData.articles || !newsData.articles.length)
-        throw new Error("Tidak ada berita ditemukan. Coba lagi nanti.")
-
-      // 2. Kirim ke sentiment dengan category dari news pipeline
-      const sentData = await api.predictSentiment(
-        currentTicker,
-        newsData.articles.map((a) => ({
-          title: a.title,
-          content: a.content || "",
-          category: a.category || "market",
-        })),
-      )
-
-      // 3. Merge hasil sentimen ke artikel
-      const merged = newsData.articles.map((a, i) => ({
-        ...a,
-        category: sentData.results[i]?.category || a.category || "market",
-        sentiment: sentData.results[i]?.sentiment || "neutral",
-        sentiment_label: sentData.results[i]?.label || "Netral",
-        score: sentData.results[i]?.score ?? 0,
-        llm_sentiment: sentData.results[i]?.llm_sentiment || "neutral",
-        llm_label: sentData.results[i]?.llm_label || "Netral",
-        llm_score: sentData.results[i]?.llm_score ?? 0,
-      }))
-
-      const ln = {
-        total_articles: sentData.total_articles,
-        articles: merged,
-        sentiment_summary: sentData.summary,
-      }
-      setNews(ln)
-      setNewsTs(Date.now())
-      saveCache(currentTicker, "news", ln)
-
-      setAiSummary("Membuat ringkasan AI...")
-      api
-        .groqNewsSummary({
-          ticker: currentTicker,
-          articles: merged.map((a) => ({ source: a.source, title: a.title })),
-          sentiment_summary: sentData.summary,
-        })
-        .then((r) => {
-          const txt = r.summary || r.main_theme || "Groq tidak memberikan ringkasan."
-          setAiSummary(txt)
-          saveCache(currentTicker, "groqNewsSummary", txt)
-        })
-        .catch((e) => setAiSummary("Gagal ringkasan Groq: " + e.message))
-    } catch (e) {
-      setNewsErr(e.message)
-    } finally {
-      setNewsBusy(false)
-    }
-  }
 
   async function fetchFinalReco() {
     if (!mlPred) {
@@ -350,14 +284,11 @@ export default function Overview() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [indicators, mlPred, groqTech, groqTechBusy, groqTechErr, groqTechTs, currentTicker])
 
-  const autoNewsRef = useRef(null)
+  // Auto-fetch berita menggunakan shared context (tidak double-fetch antar halaman)
   useEffect(() => {
-    if (!news && !newsBusy && !newsErr && !newsTs && autoNewsRef.current !== currentTicker) {
-      autoNewsRef.current = currentTicker
-      fetchNews()
-    }
+    if (currentTicker) fetchNewsForTicker(currentTicker)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [news, newsBusy, newsErr, newsTs, currentTicker])
+  }, [currentTicker])
 
   // Range-band chart plugin — draws shaded area between high/low
   const ovRangeBandPlugin = useMemo(() => ({
