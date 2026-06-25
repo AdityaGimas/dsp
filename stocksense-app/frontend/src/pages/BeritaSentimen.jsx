@@ -81,6 +81,7 @@ export default function BeritaSentimen() {
   const [compareOpen, setCompareOpen] = useState(false)
   const [newsCountLimit, setNewsCountLimit] = useState(20)
   const [activeModel, setActiveModel] = useState("both") // "bert", "llm", "both"
+  const [distModel, setDistModel] = useState("bert") // "bert", "llm"
 
   // ─── Per-sector AI ──────────────────────────────────────────────────────────
   async function runSectorAi(sector, articlesForSector) {
@@ -452,12 +453,36 @@ export default function BeritaSentimen() {
           <div className="col-gap14">
             {/* Sentiment distribution bar */}
             <div className="card">
-              <div className="card-header"><div className="card-title">📊 Distribusi Sentimen</div></div>
+              <div className="card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                <div className="card-title">📊 Distribusi Sentimen</div>
+                <div style={{ display: "flex", gap: 4 }}>
+                  <button
+                    onClick={() => setDistModel("bert")}
+                    style={{
+                      padding: "2px 8px", fontSize: 10, fontWeight: distModel === "bert" ? 700 : 400,
+                      borderRadius: 4, border: "1px solid",
+                      borderColor: distModel === "bert" ? "var(--blue)" : "rgba(255,255,255,0.1)",
+                      background: distModel === "bert" ? "rgba(96,165,250,0.18)" : "transparent",
+                      color: distModel === "bert" ? "var(--blue)" : "var(--text-muted)", cursor: "pointer", transition: "all 0.15s ease",
+                    }}
+                  >BERT</button>
+                  <button
+                    onClick={() => setDistModel("llm")}
+                    style={{
+                      padding: "2px 8px", fontSize: 10, fontWeight: distModel === "llm" ? 700 : 400,
+                      borderRadius: 4, border: "1px solid",
+                      borderColor: distModel === "llm" ? "var(--purple)" : "rgba(255,255,255,0.1)",
+                      background: distModel === "llm" ? "rgba(167,139,250,0.18)" : "transparent",
+                      color: distModel === "llm" ? "var(--purple)" : "var(--text-muted)", cursor: "pointer", transition: "all 0.15s ease",
+                    }}
+                  >LLM</button>
+                </div>
+              </div>
               <div className="card-body">
                 {[
-                  { label: "Positif", pct: bertStats.posPct, color: "var(--green)" },
-                  { label: "Netral", pct: bertStats.neuPct, color: "var(--amber)" },
-                  { label: "Negatif", pct: bertStats.negPct, color: "var(--red)" },
+                  { label: "Positif", pct: distModel === "bert" ? bertStats.posPct : llmStats.posPct, color: "var(--green)" },
+                  { label: "Netral", pct: distModel === "bert" ? bertStats.neuPct : llmStats.neuPct, color: "var(--amber)" },
+                  { label: "Negatif", pct: distModel === "bert" ? bertStats.negPct : llmStats.negPct, color: "var(--red)" },
                 ].map(({ label, pct, color }) => (
                   <div className="sbar-row" key={label}>
                     <span className="sbar-lbl">{label}</span>
