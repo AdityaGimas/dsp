@@ -270,6 +270,8 @@ class FinalReq(BaseModel):
     ml_prediction: Optional[dict] = None
     groq_technical: Optional[dict] = None
     sentiment_summary: Optional[dict] = None
+    bert_summary: Optional[dict] = None
+    llm_sentiment_summary: Optional[dict] = None
     groq_news: Optional[dict] = None
     macro_data: Optional[dict] = None
     indicators: Optional[dict] = None
@@ -282,6 +284,8 @@ async def final_recommendation(req: FinalReq):
     ml    = req.ml_prediction  or {}
     gt    = req.groq_technical or {}
     s     = req.sentiment_summary or {}
+    bert  = req.bert_summary or {}
+    llm_s = req.llm_sentiment_summary or {}
     gn    = req.groq_news      or {}
     macro = req.macro_data or {}
     ind   = req.indicators or {}
@@ -331,11 +335,40 @@ KONDISI MAKRO INDONESIA:
 
     # --- Sentimen detail ---
     sent_str = ""
-    if s or gn:
+    if s or bert or llm_s or gn:
+        # Pilih sumber BERT summary: preferensi dari bert_summary (dihitung frontend)
+        # fallback ke sentiment_summary (dihitung backend)
+        b = bert if bert else s
+        l = llm_s if llm_s else {}
+
+        # Bangun baris IndoBERT
+        bert_line = (
+            f"Positif {b.get('positive_pct', 0)}% | Netral {b.get('neutral_pct', 0)}% "
+            f"| Negatif {b.get('negative_pct', 0)}% | Skor: {b.get('score', 50)}/100 "
+            f"→ {b.get('overall_label', b.get('overall', '?'))}"
+        ) if b else "Data tidak tersedia"
+
+        # Bangun baris LLM per-artikel
+        llm_line = (
+            f"Positif {l.get('positive_pct', 0)}% | Netral {l.get('neutral_pct', 0)}% "
+            f"| Negatif {l.get('negative_pct', 0)}% | Skor: {l.get('score', 50)}/100 "
+            f"→ {l.get('overall_label', l.get('overall', '?'))}"
+        ) if l else "Data tidak tersedia"
+
+        # Kesimpulan konsensus
+        bert_overall = b.get('overall', 'neutral') if b else 'neutral'
+        llm_overall  = l.get('overall', 'neutral') if l else 'neutral'
+        if bert_overall == llm_overall:
+            consensus = f"Kedua model sepakat: sentimen {bert_overall}"
+        else:
+            consensus = f"Model berbeda pendapat — IndoBERT: {bert_overall}, LLM: {llm_overall}. Pertimbangkan sebagai sinyal campuran."
+
         sent_str = f"""
-SENTIMEN BERITA:
-- Finetune Model: Positif {s.get('positive_pct',0)}% | Netral {s.get('neutral_pct',0)}% | Negatif {s.get('negative_pct',0)}% | Skor: {s.get('score',50)}/100 → {s.get('overall','?')}
-- LLM Groq: Rekomendasi {gn.get('news_recommendation','?')} (conf {round(gn.get('news_confidence',0)*100)}%), arah {gn.get('sentiment_direction','?')}
+SENTIMEN BERITA (DUAL-MODEL):
+- IndoBERT (model finetuned): {bert_line}
+- LLM per-artikel (Groq):     {llm_line}
+- Konsensus: {consensus}
+- Ringkasan LLM: Rekomendasi {gn.get('news_recommendation','?')} (conf {round(gn.get('news_confidence',0)*100)}%), arah {gn.get('sentiment_direction','?')}
 - Tema utama: {gn.get('main_theme', 'tidak diketahui')}
 - Faktor kunci: {', '.join(gn.get('key_factors', []))}"""
 

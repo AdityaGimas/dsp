@@ -258,6 +258,8 @@ export default function Overview() {
         ml_prediction: mlPred,
         groq_technical: groqTech || undefined,
         sentiment_summary: news?.sentiment_summary || undefined,
+        bert_summary: news ? bertSummary : undefined,
+        llm_sentiment_summary: news ? llmSummary : undefined,
         groq_news: news || undefined,
         macro_data: macroData || undefined,
         indicators: indicators || undefined,
@@ -1336,25 +1338,10 @@ function renderFinalReco(ml, grok, news, apiRes, busy, onGenerate) {
                     <div className="factor-name">{f.factor}</div>
                     <div className="factor-badges">
                       <span className="factor-weight-lbl">Bobot {weightW}%</span>
+                      <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Skor {scoreW}</span>
                       <span className="factor-signal-badge" style={{ background: fBg, color: fColor, borderColor: fBorder }}>
                         {sigLabel}
                       </span>
-                    </div>
-                  </div>
-                  <div className="factor-bars">
-                    <div className="factor-bar-row">
-                      <span className="factor-bar-lbl">Kekuatan</span>
-                      <div className="factor-bar-track">
-                        <div className="factor-bar-fill" style={{ width: scoreW + "%", background: fColor }} />
-                      </div>
-                      <span className="factor-bar-pct" style={{ color: fColor }}>{scoreW}</span>
-                    </div>
-                    <div className="factor-bar-row">
-                      <span className="factor-bar-lbl">Bobot</span>
-                      <div className="factor-bar-track">
-                        <div className="factor-bar-fill" style={{ width: weightW + "%", background: "rgba(167,139,250,0.5)" }} />
-                      </div>
-                      <span className="factor-bar-pct" style={{ color: "var(--purple)" }}>{weightW}</span>
                     </div>
                   </div>
                   {f.explanation && (
