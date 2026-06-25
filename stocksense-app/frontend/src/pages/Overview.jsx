@@ -620,46 +620,51 @@ export default function Overview() {
   }
 
   // ── derived values + dynamic styles (named, single-brace refs) ───
-  const sm = news?.sentiment_summary || {}
-
-  const llmSummary = useMemo(() => {
+  // BERT stats — dihitung client-side dari articles (konsisten dengan BeritaSentimen)
+  const bertSummary = useMemo(() => {
     if (!news || !news.articles || !news.articles.length) return {
-      positive: 0, neutral: 0, negative: 0,
       positive_pct: 0, neutral_pct: 0, negative_pct: 0,
       score: 0, overall: "neutral", overall_label: "Netral"
     }
     const articles = news.articles
-    let pos = 0, neu = 0, neg = 0
-    articles.forEach((a) => {
-      if (a.llm_sentiment === "positive") pos++
-      else if (a.llm_sentiment === "negative") neg++
-      else neu++
-    })
-    const total = articles.length
-    const pos_pct = Math.round(pos / total * 100)
-    const neu_pct = Math.round(neu / total * 100)
-    const neg_pct = Math.round(neg / total * 100)
-    const score = Math.round((pos * 100 + neu * 50) / total)
-    const overall = pos_pct > 50 ? "positive" : (neg_pct > 50 ? "negative" : "neutral")
-    const overall_label = overall === "positive" ? "Positif" : (overall === "negative" ? "Negatif" : "Netral")
-    return {
-      positive: pos,
-      neutral: neu,
-      negative: neg,
-      positive_pct: pos_pct,
-      neutral_pct: neu_pct,
-      negative_pct: neg_pct,
-      score,
-      overall,
-      overall_label,
+    const total = articles.length || 1
+    const bertPos = articles.filter(a => a.sentiment === "positive").length
+    const bertNeu = articles.filter(a => a.sentiment === "neutral").length
+    const bertNeg = articles.filter(a => a.sentiment === "negative").length
+    const pos_pct = Math.round(bertPos / total * 100)
+    const neu_pct = Math.round(bertNeu / total * 100)
+    const neg_pct = Math.round(bertNeg / total * 100)
+    const score = Math.round(articles.reduce((s, a) => s + (a.score || 0), 0) / total * 100)
+    const overall = bertPos >= bertNeg && bertPos >= bertNeu ? "positive" : bertNeg >= bertPos && bertNeg >= bertNeu ? "negative" : "neutral"
+    const overall_label = overall === "positive" ? "Positif" : overall === "negative" ? "Negatif" : "Netral"
+    return { positive_pct: pos_pct, neutral_pct: neu_pct, negative_pct: neg_pct, score, overall, overall_label }
+  }, [news])
+
+  // LLM stats — dihitung client-side dari articles (konsisten dengan BeritaSentimen)
+  const llmSummary = useMemo(() => {
+    if (!news || !news.articles || !news.articles.length) return {
+      positive_pct: 0, neutral_pct: 0, negative_pct: 0,
+      score: 0, overall: "neutral", overall_label: "Netral"
     }
+    const articles = news.articles
+    const total = articles.length || 1
+    const llmPos = articles.filter(a => a.llm_sentiment === "positive").length
+    const llmNeu = articles.filter(a => a.llm_sentiment === "neutral").length
+    const llmNeg = articles.filter(a => a.llm_sentiment === "negative").length
+    const pos_pct = Math.round(llmPos / total * 100)
+    const neu_pct = Math.round(llmNeu / total * 100)
+    const neg_pct = Math.round(llmNeg / total * 100)
+    const score = Math.round(articles.reduce((s, a) => s + (a.llm_score || 0), 0) / total * 100)
+    const overall = llmPos >= llmNeg && llmPos >= llmNeu ? "positive" : llmNeg >= llmPos && llmNeg >= llmNeu ? "negative" : "neutral"
+    const overall_label = overall === "positive" ? "Positif" : overall === "negative" ? "Negatif" : "Netral"
+    return { positive_pct: pos_pct, neutral_pct: neu_pct, negative_pct: neg_pct, score, overall, overall_label }
   }, [news])
 
   const ov = indicators?.overall || {}
   const mlFirst = mlPred?.predictions?.[0]
   const pos = info ? info.change_pct >= 0 : true
   const predSubColor = mlFirst && mlFirst.change_pct >= 0 ? S.green : S.red
-  const sentColor1 = sm.overall === "positive" ? S.green : sm.overall === "negative" ? S.red : S.amberTxt
+  const sentColor1 = bertSummary.overall === "positive" ? S.green : bertSummary.overall === "negative" ? S.red : S.amberTxt
   const sentColor2 = llmSummary.overall === "positive" ? S.green : llmSummary.overall === "negative" ? S.red : S.amberTxt
   const sentKpiStyle = news ? (sentModel === "llm" ? sentColor2 : sentColor1) : S.tealTxt
   const grokKpiStyle = groqTech ? { color: recColor(groqTech.recommendation) } : S.purpleTxt
@@ -774,11 +779,11 @@ export default function Overview() {
           {/* Card 3: Ringkasan Sentimen */}
           <div className="kpi-card kpi-c-teal">
             <div className="kpi-label">Berita dan Sentimen</div>
-            <div className="kpi-val" style={{ color: news ? indColor(sentModel === "llm" ? llmSummary.overall_label : sm.overall_label) : "var(--text-muted)" }}>
-              {news ? (sentModel === "llm" ? llmSummary.overall_label : sm.overall_label).toUpperCase() : "Menunggu..."}
+            <div className="kpi-val" style={{ color: news ? indColor(sentModel === "llm" ? llmSummary.overall_label : bertSummary.overall_label) : "var(--text-muted)" }}>
+              {news ? (sentModel === "llm" ? llmSummary.overall_label : bertSummary.overall_label).toUpperCase() : "Menunggu..."}
             </div>
             <div className="kpi-sub">
-              {news ? `Berdasarkan berita terbaru, sentimen pasar saat ini didominasi nilai ${(sentModel === "llm" ? llmSummary.overall_label : sm.overall_label).toLowerCase()}.` : 'Klik "↻ Refresh"'}
+              {news ? `Berdasarkan berita terbaru, sentimen pasar saat ini didominasi nilai ${(sentModel === "llm" ? llmSummary.overall_label : bertSummary.overall_label).toLowerCase()}.` : 'Klik "↻ Refresh"'}
             </div>
           </div>
 
@@ -964,7 +969,7 @@ export default function Overview() {
               <div className="card-header">
                 <div className="card-title">🌐 Sentimen Berita</div>
               </div>
-              <div className="card-body">{renderSentiment(news, newsErr, newsBusy, aiSummary, sentModel, setSentModel, llmSummary)}</div>
+              <div className="card-body">{renderSentiment(news, newsErr, newsBusy, aiSummary, sentModel, setSentModel, bertSummary, llmSummary)}</div>
             </div>
 
             <div className="card">
@@ -1468,7 +1473,7 @@ function renderFinalReco(ml, grok, news, apiRes, busy, onGenerate) {
   )
 }
 
-function renderSentiment(news, err, busy, aiSummary, sentModel, setSentModel, llmSummary) {
+function renderSentiment(news, err, busy, aiSummary, sentModel, setSentModel, bertSummary, llmSummary) {
   if (busy) {
     return (
       <div className="loading-overlay" style={{ padding: "40px 0", flexDirection: "column" }}>
@@ -1488,7 +1493,8 @@ function renderSentiment(news, err, busy, aiSummary, sentModel, setSentModel, ll
     )
   }
 
-  const s = news.sentiment_summary || {}
+  // Gunakan bertSummary (client-side) yang konsisten dengan BeritaSentimen
+  const s = bertSummary || {}
 
   // ─── Render model selector ───
   const renderSelector = () => (
@@ -1555,14 +1561,14 @@ function renderSentiment(news, err, busy, aiSummary, sentModel, setSentModel, ll
 
   // ─── Render dual model comparison ───
   const renderComparison = () => {
-    const overallColor1 = s.overall === "positive" ? "var(--green)" : s.overall === "negative" ? "var(--red)" : "var(--amber)"
-    const overallLabel1 = s.overall === "positive" ? "Positif" : s.overall === "negative" ? "Negatif" : "Netral"
-    const circleBg1 = s.overall === "positive" ? "rgba(45,212,160,0.1)" : s.overall === "negative" ? "rgba(245,94,94,0.1)" : "rgba(245,183,49,0.1)"
+    const overallColor1 = bertSummary.overall === "positive" ? "var(--green)" : bertSummary.overall === "negative" ? "var(--red)" : "var(--amber)"
+    const overallLabel1 = bertSummary.overall_label || "Netral"
+    const circleBg1 = bertSummary.overall === "positive" ? "rgba(45,212,160,0.1)" : bertSummary.overall === "negative" ? "rgba(245,94,94,0.1)" : "rgba(245,183,49,0.1)"
     const circleStyle1 = { background: circleBg1, borderColor: overallColor1 + "40" }
     const numStyle1 = { color: overallColor1 }
 
     const overallColor2 = llmSummary.overall === "positive" ? "var(--green)" : llmSummary.overall === "negative" ? "var(--red)" : "var(--amber)"
-    const overallLabel2 = llmSummary.overall === "positive" ? "Positif" : llmSummary.overall === "negative" ? "Negatif" : "Netral"
+    const overallLabel2 = llmSummary.overall_label || "Netral"
     const circleBg2 = llmSummary.overall === "positive" ? "rgba(45,212,160,0.1)" : llmSummary.overall === "negative" ? "rgba(245,94,94,0.1)" : "rgba(245,183,49,0.1)"
     const circleStyle2 = { background: circleBg2, borderColor: overallColor2 + "40" }
     const numStyle2 = { color: overallColor2 }
@@ -1592,7 +1598,7 @@ function renderSentiment(news, err, busy, aiSummary, sentModel, setSentModel, ll
           {/* Left: BERT */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
             <div className="sent-circle" style={{ ...circleStyle1, width: 56, height: 56, borderWidth: 1.5 }}>
-              <span className="sent-num" style={{ ...numStyle1, fontSize: 16 }}>{s.score || "—"}</span>
+              <span className="sent-num" style={{ ...numStyle1, fontSize: 16 }}>{bertSummary.score || "—"}</span>
             </div>
             <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: 11, fontWeight: 700, ...numStyle1 }}>{overallLabel1}</div>
@@ -1613,9 +1619,9 @@ function renderSentiment(news, err, busy, aiSummary, sentModel, setSentModel, ll
           </div>
         </div>
 
-        {renderCompareRow("Positif", s.positive_pct || 0, llmSummary.positive_pct || 0, "var(--green)")}
-        {renderCompareRow("Netral", s.neutral_pct || 0, llmSummary.neutral_pct || 0, "var(--amber)")}
-        {renderCompareRow("Negatif", s.negative_pct || 0, llmSummary.negative_pct || 0, "var(--red)")}
+        {renderCompareRow("Positif", bertSummary.positive_pct || 0, llmSummary.positive_pct || 0, "var(--green)")}
+        {renderCompareRow("Netral", bertSummary.neutral_pct || 0, llmSummary.neutral_pct || 0, "var(--amber)")}
+        {renderCompareRow("Negatif", bertSummary.negative_pct || 0, llmSummary.negative_pct || 0, "var(--red)")}
       </>
     )
   }
@@ -1625,7 +1631,7 @@ function renderSentiment(news, err, busy, aiSummary, sentModel, setSentModel, ll
       {renderSelector()}
 
       {sentModel === "compare" && renderComparison()}
-      {sentModel === "finetune" && renderSingleModel(s, "Model sentimen BERT")}
+      {sentModel === "finetune" && renderSingleModel(bertSummary, "Model sentimen BERT")}
       {sentModel === "llm" && renderSingleModel(llmSummary, "Model sentimen LLM")}
 
       <div className="ai-box" style={{ marginTop: 16 }}>
