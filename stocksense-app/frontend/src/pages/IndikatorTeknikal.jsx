@@ -22,13 +22,20 @@ const St = {
 // klasifikasi sinyal teks -> buy | sell | hold
 function sigClass(signal) {
   const s = (signal || "").toLowerCase()
-  if (/beli|bullish|atas|oversold/.test(s)) return "buy"
+  if (/beli|bullish|oversold/.test(s)) return "buy"
   if (/jual|bearish|overbought/.test(s)) return "sell"
   return "hold"
 }
 function sigStyle(signal) {
   const c = sigClass(signal)
   return c === "buy" ? St.green : c === "sell" ? St.red : St.amber
+}
+// posisi Bollinger -> arah: di atas MA20 (bias naik) hijau, di bawah merah
+function bbStyle(position) {
+  const p = (position || "").toLowerCase()
+  if (p.includes("upper")) return St.green
+  if (p.includes("lower")) return St.red
+  return St.amber
 }
 
 
@@ -95,7 +102,7 @@ export default function IndikatorTeknikal() {
   const ovStyle = sigStyle(overall?.signal)
 
   // MACD mini histogram (dummy bila tak ada riwayat) + nilai terkini
-  const macdHist = macd ? [macd.histogram * 0.4, macd.histogram * 0.6, macd.histogram * 0.8, macd.histogram] : []
+  const macdHist = macd ? (Array.isArray(macd.history) && macd.history.length ? macd.history : [macd.histogram]) : []
   const macdData = {
     labels: macdHist.map((_, i) => i + 1),
     datasets: [
@@ -202,13 +209,13 @@ export default function IndikatorTeknikal() {
             
             <div className="row-2" style={{marginTop: 16}}>
               <div className="card">
-                <div className="card-header"><div className="card-title">Bollinger Bands</div><span className="sig-signal sig-signal-hold">{bb?.position || "—"}</span></div>
+                <div className="card-header"><div className="card-title">Bollinger Bands</div><span className="sig-signal" style={bbStyle(bb?.position)}>{bb?.position || "—"}</span></div>
                 <div className="card-body">
                   <div className="ind-subtitle" style={{marginBottom: 12, whiteSpace: "normal", height: "auto"}}>Bollinger Bands mengukur batas pergerakan harga, mendeteksi jika harga sudah terlalu tinggi/rendah dari normalnya.</div>
                   <div className="ind-stat-row"><span className="ind-sk">Upper</span><span className="ind-sv">{bb ? fmt(bb.upper) : "—"}</span></div>
                   <div className="ind-stat-row"><span className="ind-sk">Mid (MA20)</span><span className="ind-sv">{bb ? fmt(bb.mid) : "—"}</span></div>
                   <div className="ind-stat-row"><span className="ind-sk">Lower</span><span className="ind-sv">{bb ? fmt(bb.lower) : "—"}</span></div>
-                  <div className="ind-stat-row"><span className="ind-sk">Posisi</span><span className="ind-sv" style={St.blue}>{bb?.position || "—"}</span></div>
+                  <div className="ind-stat-row"><span className="ind-sk">Posisi</span><span className="ind-sv" style={bbStyle(bb?.position)}>{bb?.position || "—"}</span></div>
                 </div>
               </div>
               <div className="card">

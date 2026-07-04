@@ -132,6 +132,9 @@ def get_technical_indicators(ticker: str):
     macd_val = round(float(macd_obj.macd().iloc[-1]), 2)
     macd_signal = round(float(macd_obj.macd_signal().iloc[-1]), 2)
     macd_diff = round(macd_val - macd_signal, 2)
+    # Riwayat histogram MACD (macd line - signal line) untuk grafik
+    _macd_hist_series = (macd_obj.macd() - macd_obj.macd_signal()).dropna()
+    macd_history = [round(float(x), 2) for x in _macd_hist_series.iloc[-24:]]
 
     # MA 20 & MA 50
     ma20 = round(float(close.rolling(20).mean().iloc[-1]), 2)
@@ -169,6 +172,7 @@ def get_technical_indicators(ticker: str):
     return {
         "rsi": {"value": rsi, "signal": "Overbought" if rsi > 70 else ("Oversold" if rsi < 30 else "Netral")},
         "macd": {"value": macd_val, "signal_line": macd_signal, "histogram": macd_diff,
+                 "history": macd_history,
                  "signal": "Bullish" if macd_diff > 0 else "Bearish"},
         "moving_average": {"ma20": ma20, "ma50": ma50, "golden_cross": golden_cross,
                            "signal": "Beli" if golden_cross else "Jual"},
