@@ -15,6 +15,7 @@ GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 # Model berbeda tiap endpoint -> rate limit tidak cepat habis
 MODEL_TECHNICAL  = "llama-3.3-70b-versatile"
 MODEL_NEWS       = "llama-3.3-70b-versatile"
+MODEL_NEWS2      = "qwen/qwen3-32b"
 MODEL_FINAL_RECO = "llama-3.3-70b-versatile"
 
 
@@ -72,7 +73,7 @@ def get_key(req_key: Optional[str]) -> str:
 _ROTATE_CODES = {429, 401, 403, 408, 500, 502, 503, 504}
 
 
-async def groq_chat_rotate(messages: list, model: str, max_tokens: int = 700, api_key: Optional[str] = None, json_mode: bool = False) -> dict:
+async def groq_chat_rotate(messages: list, model: str, max_tokens: int = 700, api_key: Optional[str] = None, json_mode: bool = False, reasoning_effort: Optional[str] = None) -> dict:
     """Panggil Groq dengan rotasi key + fallback bila kena limit. Error hanya
     dilempar bila SEMUA key gagal."""
     pool = [api_key.strip()] if api_key else get_key_pool()
@@ -84,7 +85,7 @@ async def groq_chat_rotate(messages: list, model: str, max_tokens: int = 700, ap
     for offset in range(n):
         key = pool[(start + offset) % n]
         try:
-            return await groq_chat(messages, key, model, max_tokens, json_mode=json_mode)
+            return await groq_chat(messages, key, model, max_tokens, json_mode=json_mode, reasoning_effort=reasoning_effort)
         except HTTPException as e:
             last_detail = str(e.detail)
             if e.status_code in _ROTATE_CODES:
@@ -93,11 +94,14 @@ async def groq_chat_rotate(messages: list, model: str, max_tokens: int = 700, ap
     raise HTTPException(429, f"Semua {n} Groq API key kena limit atau gagal. Terakhir: {last_detail[:200]}")
 
 
-async def groq_chat(messages: list, api_key: str, model: str, max_tokens: int = 700, json_mode: bool = False) -> dict:
+async def groq_chat(messages: list, api_key: str, model: str, max_tokens: int = 700, json_mode: bool = False, reasoning_effort: Optional[str] = None) -> dict:
     payload = {"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0.2}
     if json_mode:
         # Paksa Groq mengembalikan JSON valid (JSON mode, OpenAI-compatible).
         payload["response_format"] = {"type": "json_object"}
+    if reasoning_effort:
+        # Untuk model reasoning (mis. Qwen3): "none" mematikan thinking -> JSON bersih.
+        payload["reasoning_effort"] = reasoning_effort
     async with httpx.AsyncClient(timeout=40) as c:
         r = await c.post(GROQ_URL,
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},

@@ -110,6 +110,9 @@ export function AppProvider({ children }) {
         llm_sentiment: sentData.results[i]?.llm_sentiment || "neutral",
         llm_label: sentData.results[i]?.llm_label || "Netral",
         llm_score: sentData.results[i]?.llm_score ?? 0,
+        llm2_sentiment: sentData.results[i]?.llm2_sentiment || "neutral",
+        llm2_label: sentData.results[i]?.llm2_label || "Netral",
+        llm2_score: sentData.results[i]?.llm2_score ?? 0,
       }))
 
       const ln = {

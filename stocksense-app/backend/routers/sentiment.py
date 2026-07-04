@@ -123,7 +123,40 @@ async def predict_hf(articles: List[ArticleInput]) -> list:
     return results
 
 # ─── Groq LLM inference ───────────────────────────────────────────────────────
-async def predict_llm(ticker: str, articles: List[ArticleInput], api_key: str) -> list:
+def _extract_json_obj(content: str):
+    """Ekstrak objek JSON dari output model, tahan teks/penalaran tambahan."""
+    import json
+    if not content:
+        return None
+    c = content.replace("```json", "").replace("```", "")
+    try:
+        return json.loads(c.strip())
+    except Exception:
+        pass
+    candidates = []
+    depth = 0
+    start = -1
+    for i, ch in enumerate(c):
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start != -1:
+                    candidates.append(c[start:i + 1])
+                    start = -1
+    ordered = [x for x in reversed(candidates) if '"results"' in x] + list(reversed(candidates))
+    for cand in ordered:
+        try:
+            return json.loads(cand)
+        except Exception:
+            continue
+    return None
+
+
+async def predict_llm(ticker: str, articles: List[ArticleInput], api_key: str, model: str = None, use_json: bool = True, reasoning_effort: str = None) -> list:
     if not articles:
         return []
     try:
@@ -148,21 +181,15 @@ Berita:
 
     try:
         from .grok import MODEL_NEWS
+        use_model = model or MODEL_NEWS
         res  = await groq_chat_rotate(
             [{"role": "user", "content": prompt}],
-            model=MODEL_NEWS, max_tokens=2000, api_key=api_key, json_mode=True
+            model=use_model, max_tokens=3500, api_key=api_key, json_mode=use_json, reasoning_effort=reasoning_effort
         )
-        content = res["choices"][0]["message"]["content"]
-        # Cari block JSON jika ada teks tambahan
-        import re
-        match = re.search(r'\{.*\}', content, re.DOTALL)
-        if match:
-            clean = match.group(0)
-        else:
-            clean = content.strip().replace("```json", "").replace("```", "").strip()
-            
-        import json
-        data = json.loads(clean)
+        content = res["choices"][0]["message"]["content"] or ""
+        data = _extract_json_obj(content)
+        if data is None:
+            raise ValueError("gagal ekstrak JSON dari output model")
         
         # fallback neutral
         out  = [{"label": "neutral", "score": 0.5}] * len(articles)
@@ -188,9 +215,11 @@ async def predict_sentiment(req: SentimentRequest):
     Hasil per artikel berisi: sentiment (HF), llm_sentiment (Groq).
     """
     # Jalankan paralel
-    hf_res, llm_res = await asyncio.gather(
+    from .grok import MODEL_NEWS, MODEL_NEWS2
+    hf_res, llm_res, llm2_res = await asyncio.gather(
         predict_hf(req.articles),
-        predict_llm(req.ticker, req.articles, req.api_key),
+        predict_llm(req.ticker, req.articles, req.api_key, MODEL_NEWS),
+        predict_llm(req.ticker, req.articles, req.api_key, MODEL_NEWS2, reasoning_effort="none"),
     )
 
     LABEL_ID = {"positive": "Positif", "neutral": "Netral", "negative": "Negatif"}
@@ -202,9 +231,12 @@ async def predict_sentiment(req: SentimentRequest):
         hf_score  = float(hf_res[i].get("score", 0.5))
         llm_label = LABEL_MAP.get(llm_res[i].get("label", "neutral"), "neutral")
         llm_score = float(llm_res[i].get("score", 0.5))
+        llm2_label = LABEL_MAP.get(llm2_res[i].get("label", "neutral"), "neutral")
+        llm2_score = float(llm2_res[i].get("score", 0.5))
 
         if hf_label not in LABEL_MAP: hf_label  = "neutral"
         if llm_label not in LABEL_MAP: llm_label = "neutral"
+        if llm2_label not in LABEL_MAP: llm2_label = "neutral"
 
         if hf_label == "positive": pos += 1
         elif hf_label == "negative": neg += 1
@@ -219,6 +251,9 @@ async def predict_sentiment(req: SentimentRequest):
             "llm_sentiment":llm_label,
             "llm_label":    LABEL_ID.get(llm_label, "Netral"),
             "llm_score":    llm_score,
+            "llm2_sentiment":llm2_label,
+            "llm2_label":    LABEL_ID.get(llm2_label, "Netral"),
+            "llm2_score":    llm2_score,
         })
 
     total   = len(results)

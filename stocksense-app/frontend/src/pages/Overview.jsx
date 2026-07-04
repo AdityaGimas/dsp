@@ -3,6 +3,7 @@ import { Line, Bar } from "react-chartjs-2"
 import { useApp } from "../context/AppContext.jsx"
 import { api } from "../api/client.js"
 import TickerSearchBar from "../components/TickerSearchBar.jsx"
+import { OvSentTabs, OvCompare, ArticleBadges } from "./sentimentUi.jsx"
 import {
   fmt,
   fmtBig,
@@ -273,6 +274,7 @@ export default function Overview() {
         sentiment_summary: news?.sentiment_summary || undefined,
         bert_summary: news ? bertSummary : undefined,
         llm_sentiment_summary: news ? llmSummary : undefined,
+        llm2_sentiment_summary: news ? llm2Summary : undefined,
         groq_news: news || undefined,
         macro_data: macroData || undefined,
         indicators: indicators || undefined,
@@ -606,13 +608,34 @@ export default function Overview() {
     return { positive_pct: pos_pct, neutral_pct: neu_pct, negative_pct: neg_pct, score, overall, overall_label }
   }, [news])
 
+  // Qwen3 32B stats — dihitung client-side dari articles
+  const llm2Summary = useMemo(() => {
+    if (!news || !news.articles || !news.articles.length)
+      return { positive_pct: 0, neutral_pct: 0, negative_pct: 0, score: 0, overall: "neutral", overall_label: "Netral" }
+    const articles = news.articles
+    const total = articles.length || 1
+    const p = articles.filter((a) => a.llm2_sentiment === "positive").length
+    const nu = articles.filter((a) => a.llm2_sentiment === "neutral").length
+    const ng = articles.filter((a) => a.llm2_sentiment === "negative").length
+    const pos_pct = Math.round((p / total) * 100)
+    const neu_pct = Math.round((nu / total) * 100)
+    const neg_pct = Math.round((ng / total) * 100)
+    const score = Math.round((articles.reduce((s, a) => s + (a.llm2_score || 0), 0) / total) * 100)
+    const overall = p >= ng && p >= nu ? "positive" : ng >= p && ng >= nu ? "negative" : "neutral"
+    const overall_label = overall === "positive" ? "Positif" : overall === "negative" ? "Negatif" : "Netral"
+    return { positive_pct: pos_pct, neutral_pct: neu_pct, negative_pct: neg_pct, score, overall, overall_label }
+  }, [news])
+
   const ov = indicators?.overall || {}
   const mlFirst = mlPred?.predictions?.[0]
   const pos = info ? info.change_pct >= 0 : true
   const predSubColor = mlFirst && mlFirst.change_pct >= 0 ? S.green : S.red
   const sentColor1 = bertSummary.overall === "positive" ? S.green : bertSummary.overall === "negative" ? S.red : S.amberTxt
   const sentColor2 = llmSummary.overall === "positive" ? S.green : llmSummary.overall === "negative" ? S.red : S.amberTxt
-  const sentKpiStyle = news ? (sentModel === "llm" ? sentColor2 : sentColor1) : S.tealTxt
+  const sentColor3 = llm2Summary.overall === "positive" ? S.green : llm2Summary.overall === "negative" ? S.red : S.amberTxt
+  const sentActiveSummary = sentModel === "llm" ? llmSummary : sentModel === "llm2" ? llm2Summary : bertSummary
+  const sentKpiValStyle = news ? { color: indColor(sentActiveSummary.overall_label) } : { color: "var(--text-muted)" }
+  const sentKpiStyle = news ? (sentModel === "llm" ? sentColor2 : sentModel === "llm2" ? sentColor3 : sentColor1) : S.tealTxt
   const grokKpiStyle = groqTech ? { color: recColor(groqTech.recommendation) } : S.purpleTxt
   const signalStyle = ov.signal ? { color: indColor(ov.signal) } : S.greenTxt
   function renderKpiDetail() {
@@ -663,6 +686,9 @@ export default function Overview() {
       const lp = { width: (llmSummary.positive_pct || 0) + "%" }
       const lnt = { width: (llmSummary.neutral_pct || 0) + "%" }
       const lng = { width: (llmSummary.negative_pct || 0) + "%" }
+      const l2p = { width: (llm2Summary.positive_pct || 0) + "%" }
+      const l2nt = { width: (llm2Summary.neutral_pct || 0) + "%" }
+      const l2ng = { width: (llm2Summary.negative_pct || 0) + "%" }
       body = news ? (
         <>
           <div className="kpi-detail-grp">
@@ -671,9 +697,14 @@ export default function Overview() {
             <div className="kpi-sent-legend"><span className="kpi-dist-lbl">Distribusi:</span><span className="pos">Positif <b>{bertSummary.positive_pct}%</b></span><span className="neu">Netral <b>{bertSummary.neutral_pct}%</b></span><span className="neg">Negatif <b>{bertSummary.negative_pct}%</b></span></div>
           </div>
           <div className="kpi-detail-grp">
-            <div className="kpi-detail-grp-h">LLM</div>
+            <div className="kpi-detail-grp-h">Llama 3.3 70B (Groq)</div>
             <div className="kpi-sentbar"><i className="kpi-sent-pos" style={lp} /><i className="kpi-sent-net" style={lnt} /><i className="kpi-sent-neg" style={lng} /></div>
             <div className="kpi-sent-legend"><span className="kpi-dist-lbl">Distribusi:</span><span className="pos">Positif <b>{llmSummary.positive_pct}%</b></span><span className="neu">Netral <b>{llmSummary.neutral_pct}%</b></span><span className="neg">Negatif <b>{llmSummary.negative_pct}%</b></span></div>
+          </div>
+          <div className="kpi-detail-grp">
+            <div className="kpi-detail-grp-h">Qwen3 32B (Groq)</div>
+            <div className="kpi-sentbar"><i className="kpi-sent-pos" style={l2p} /><i className="kpi-sent-net" style={l2nt} /><i className="kpi-sent-neg" style={l2ng} /></div>
+            <div className="kpi-sent-legend"><span className="kpi-dist-lbl">Distribusi:</span><span className="pos">Positif <b>{llm2Summary.positive_pct}%</b></span><span className="neu">Netral <b>{llm2Summary.neutral_pct}%</b></span><span className="neg">Negatif <b>{llm2Summary.negative_pct}%</b></span></div>
           </div>
           <div className="kpi-detail-note">Angka besar pada kartu adalah label agregat; skor keyakinan dihitung dari rata-rata confidence artikel berita terbaru.</div>
         </>
@@ -841,11 +872,11 @@ export default function Overview() {
           {/* Card 3: Ringkasan Sentimen */}
           <div className={"kpi-card kpi-c-teal" + (activeKpi === "teal" ? " kpi-active" : "")} style={S.kpiClickable} onClick={() => setActiveKpi(activeKpi === "teal" ? null : "teal")}>
             <div className="kpi-label">Berita dan Sentimen</div>
-            <div className="kpi-val" style={{ color: news ? indColor(sentModel === "llm" ? llmSummary.overall_label : bertSummary.overall_label) : "var(--text-muted)" }}>
-              {news ? (sentModel === "llm" ? llmSummary.overall_label : bertSummary.overall_label).toUpperCase() : "Menunggu..."}
+            <div className="kpi-val" style={sentKpiValStyle}>
+              {news ? sentActiveSummary.overall_label.toUpperCase() : "Menunggu..."}
             </div>
             <div className="kpi-sub">
-              {news ? `Berdasarkan berita terbaru, sentimen pasar saat ini didominasi nilai ${(sentModel === "llm" ? llmSummary.overall_label : bertSummary.overall_label).toLowerCase()}.` : 'Klik "↻ Refresh"'}
+              {news ? "Berdasarkan berita terbaru, sentimen pasar saat ini didominasi nilai " + sentActiveSummary.overall_label.toLowerCase() + "." : 'Klik "↻ Refresh"'}
             </div>
           </div>
 
@@ -1036,7 +1067,7 @@ export default function Overview() {
               <div className="card-header">
                 <div className="card-title">🌐 Sentimen Berita</div>
               </div>
-              <div className="card-body">{renderSentiment(news, newsErr, newsBusy, aiSummary, sentModel, setSentModel, bertSummary, llmSummary)}</div>
+              <div className="card-body">{renderSentiment(news, newsErr, newsBusy, aiSummary, sentModel, setSentModel, bertSummary, llmSummary, llm2Summary)}</div>
             </div>
 
             <div className="card">
@@ -1553,7 +1584,7 @@ function renderFinalReco(ml, grok, news, apiRes, busy, onGenerate) {
   )
 }
 
-function renderSentiment(news, err, busy, aiSummary, sentModel, setSentModel, bertSummary, llmSummary) {
+function renderSentiment(news, err, busy, aiSummary, sentModel, setSentModel, bertSummary, llmSummary, llm2Summary) {
   if (busy) {
     return (
       <div className="loading-overlay" style={{ padding: "40px 0", flexDirection: "column" }}>
@@ -1577,25 +1608,7 @@ function renderSentiment(news, err, busy, aiSummary, sentModel, setSentModel, be
   const s = bertSummary || {}
 
   // ─── Render model selector ───
-  const renderSelector = () => (
-    <div className="tab-group" style={{ marginBottom: 16, display: "flex", justifyContent: "stretch" }}>
-      <span
-        style={{ flex: 1, textAlign: "center", fontSize: 10, padding: "4px 0" }}
-        className={`tab ${sentModel === "compare" ? "active-tab" : ""}`}
-        onClick={() => setSentModel("compare")}
-      >Overview</span>
-      <span
-        style={{ flex: 1, textAlign: "center", fontSize: 10, padding: "4px 0" }}
-        className={`tab ${sentModel === "finetune" ? "active-tab" : ""}`}
-        onClick={() => setSentModel("finetune")}
-      >Model (BERT)</span>
-      <span
-        style={{ flex: 1, textAlign: "center", fontSize: 10, padding: "4px 0" }}
-        className={`tab ${sentModel === "llm" ? "active-tab" : ""}`}
-        onClick={() => setSentModel("llm")}
-      >LLM (Groq)</span>
-    </div>
-  )
+  const renderSelector = () => <OvSentTabs value={sentModel} onChange={setSentModel} />
 
   // ─── Render single model gauges & progress bars ───
   const renderSingleModel = (data, title) => {
@@ -1638,79 +1651,16 @@ function renderSentiment(news, err, busy, aiSummary, sentModel, setSentModel, be
   }
 
   // ─── Render dual model comparison ───
-  const renderComparison = () => {
-    const overallColor1 = bertSummary.overall === "positive" ? "var(--green)" : bertSummary.overall === "negative" ? "var(--red)" : "var(--amber)"
-    const overallLabel1 = bertSummary.overall_label || "Netral"
-    const circleBg1 = bertSummary.overall === "positive" ? "rgba(45,212,160,0.1)" : bertSummary.overall === "negative" ? "rgba(245,94,94,0.1)" : "rgba(245,183,49,0.1)"
-    const circleStyle1 = { background: circleBg1, borderColor: overallColor1 + "40" }
-    const numStyle1 = { color: overallColor1 }
-
-    const overallColor2 = llmSummary.overall === "positive" ? "var(--green)" : llmSummary.overall === "negative" ? "var(--red)" : "var(--amber)"
-    const overallLabel2 = llmSummary.overall_label || "Netral"
-    const circleBg2 = llmSummary.overall === "positive" ? "rgba(45,212,160,0.1)" : llmSummary.overall === "negative" ? "rgba(245,94,94,0.1)" : "rgba(245,183,49,0.1)"
-    const circleStyle2 = { background: circleBg2, borderColor: overallColor2 + "40" }
-    const numStyle2 = { color: overallColor2 }
-
-    const renderCompareRow = (label, pct1, pct2, color) => (
-      <div style={{ marginBottom: 12 }} key={label}>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
-          <span style={{ fontWeight: 600 }}>{label}</span>
-          <span style={{ color: "var(--text-muted)", fontSize: 10 }}>BERT: {pct1}% vs LLM: {pct2}%</span>
-        </div>
-        {/* BERT Track */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-          <span style={{ fontSize: 8, width: 22, color: "var(--text-muted)", fontWeight: 500 }}>BERT</span>
-          <div className="sbar-track" style={{ flex: 1, height: 4 }}><div className="sbar-fill" style={{ width: pct1 + "%", background: color }} /></div>
-        </div>
-        {/* LLM Track */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 8, width: 22, color: "var(--text-muted)", fontWeight: 500 }}>LLM</span>
-          <div className="sbar-track" style={{ flex: 1, height: 4 }}><div className="sbar-fill" style={{ width: pct2 + "%", background: color }} /></div>
-        </div>
-      </div>
-    )
-
-    return (
-      <>
-        <div className="sent-top" style={{ display: "flex", justifyContent: "space-around", gap: 10, padding: "10px 0 16px 0", borderBottom: "1px solid var(--border-light)", marginBottom: 14 }}>
-          {/* Left: BERT */}
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-            <div className="sent-circle" style={{ ...circleStyle1, width: "auto", height: "auto", padding: "5px 16px", borderRadius: 999, borderWidth: 1.5 }}>
-              <span className="sent-num" style={{ ...numStyle1, fontSize: 13, fontFamily: "var(--font-body)" }}>{overallLabel1}</span>
-            </div>
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, ...numStyle1 }}>{null}</div>
-              <div style={{ fontSize: 9, color: "var(--text-muted)" }}>Model (BERT) · Skor {bertSummary.score}</div>
-            </div>
-          </div>
-          {/* Divider */}
-          <div style={{ borderLeft: "1px solid var(--border-light)", height: 70, alignSelf: "center" }} />
-          {/* Right: LLM */}
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-            <div className="sent-circle" style={{ ...circleStyle2, width: "auto", height: "auto", padding: "5px 16px", borderRadius: 999, borderWidth: 1.5 }}>
-              <span className="sent-num" style={{ ...numStyle2, fontSize: 13, fontFamily: "var(--font-body)" }}>{overallLabel2}</span>
-            </div>
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, ...numStyle2 }}>{null}</div>
-              <div style={{ fontSize: 9, color: "var(--text-muted)" }}>LLM (Groq) · Skor {llmSummary.score}</div>
-            </div>
-          </div>
-        </div>
-
-        {renderCompareRow("Positif", bertSummary.positive_pct || 0, llmSummary.positive_pct || 0, "var(--green)")}
-        {renderCompareRow("Netral", bertSummary.neutral_pct || 0, llmSummary.neutral_pct || 0, "var(--amber)")}
-        {renderCompareRow("Negatif", bertSummary.negative_pct || 0, llmSummary.negative_pct || 0, "var(--red)")}
-      </>
-    )
-  }
+  const renderComparison = () => <OvCompare bert={bertSummary} llm={llmSummary} llm2={llm2Summary} />
 
   return (
     <>
       {renderSelector()}
 
       {sentModel === "compare" && renderComparison()}
-      {sentModel === "finetune" && renderSingleModel(bertSummary, "Model sentimen BERT")}
-      {sentModel === "llm" && renderSingleModel(llmSummary, "Model sentimen LLM")}
+      {sentModel === "bert" && renderSingleModel(bertSummary, "Model sentimen IndoBERT")}
+      {sentModel === "llm" && renderSingleModel(llmSummary, "Model sentimen Llama 3.3 70B")}
+      {sentModel === "llm2" && renderSingleModel(llm2Summary, "Model sentimen Qwen3 32B")}
 
       <div className="ai-box" style={{ marginTop: 16 }}>
         <div className="ai-lbl"><span>✦</span> Ringkasan Groq AI</div>
@@ -1741,17 +1691,7 @@ function renderNews(news, err, busy) {
     const llmMeta = SENT_META[a.llm_sentiment] || SENT_META.neutral
     return (
       <div className="eNews-item" key={i}>
-        {/* Dual score badges */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 52 }}>
-          <div className={"eNews-score-badge " + hfMeta.cls}>
-            <span className="esb-lbl">{hfMeta.short}</span>
-            <span className="esb-sub">BERT <b className="esb-conf">{Math.round((a.score || 0) * 100)}</b></span>
-          </div>
-          <div className={"eNews-score-badge " + llmMeta.cls}>
-            <span className="esb-lbl">{llmMeta.short}</span>
-            <span className="esb-sub">LLM <b className="esb-conf">{Math.round((a.llm_score || 0) * 100)}</b></span>
-          </div>
-        </div>
+        <ArticleBadges a={a} meta={SENT_META} />
 
         <div className="eNews-body">
           <div className="eNews-title">

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useApp } from "../context/AppContext.jsx"
 import { api } from "../api/client.js"
 import TickerSearchBar from "../components/TickerSearchBar.jsx"
+import { computeStats3, SentModelToggle, SentKpiHero, SentCompare, ArticleBadges, DistToggle, SentDistribution } from "./sentimentUi.jsx"
 
 const St = {
   monoGreen: { fontFamily: "var(--font-mono)", fontSize: 24, fontWeight: 700, color: "var(--green)" },
@@ -178,25 +179,7 @@ export default function BeritaSentimen() {
   }, [articles])
 
   // ─── BERT & LLM stats ────────────────────────────────────────────────────────
-  const { bertStats, llmStats } = useMemo(() => {
-    const total = articles.length || 1
-    const bertPos = articles.filter(a => a.sentiment === "positive").length
-    const bertNeu = articles.filter(a => a.sentiment === "neutral").length
-    const bertNeg = articles.filter(a => a.sentiment === "negative").length
-    const bertScore = Math.round(articles.reduce((s, a) => s + (a.score || 0), 0) / total * 100)
-    const bertOverall = bertPos >= bertNeg && bertPos >= bertNeu ? "positive" : bertNeg >= bertPos && bertNeg >= bertNeu ? "negative" : "neutral"
-
-    const llmPos = articles.filter(a => a.llm_sentiment === "positive").length
-    const llmNeu = articles.filter(a => a.llm_sentiment === "neutral").length
-    const llmNeg = articles.filter(a => a.llm_sentiment === "negative").length
-    const llmScore = Math.round(articles.reduce((s, a) => s + (a.llm_score || 0), 0) / total * 100)
-    const llmOverall = llmPos >= llmNeg && llmPos >= llmNeu ? "positive" : llmNeg >= llmPos && llmNeg >= llmNeu ? "negative" : "neutral"
-
-    return {
-      bertStats: { posPct: Math.round(bertPos / total * 100), neuPct: Math.round(bertNeu / total * 100), negPct: Math.round(bertNeg / total * 100), score: bertScore, overall: bertOverall },
-      llmStats: { posPct: Math.round(llmPos / total * 100), neuPct: Math.round(llmNeu / total * 100), negPct: Math.round(llmNeg / total * 100), score: llmScore, overall: llmOverall },
-    }
-  }, [articles])
+  const stats = useMemo(() => computeStats3(articles), [articles])
 
   // ─── Render ──────────────────────────────────────────────────────────────────
   return (
@@ -211,65 +194,9 @@ export default function BeritaSentimen() {
       <div className="content">
         {err && <div className="error-msg">{err}</div>}
 
-        {/* Model Toggle Selector */}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
-          <div className="fc-model-toggle" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-            {[
-              { id: "bert", label: "Model BERT" },
-              { id: "llm",  label: "Model LLM" },
-              { id: "both", label: "Keduanya" },
-            ].map((m) => (
-              <button
-                key={m.id}
-                className={"fc-mtog " + (activeModel === m.id ? "fc-mtog-active" : "")}
-                onClick={() => setActiveModel(m.id)}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <SentModelToggle value={activeModel} onChange={setActiveModel} />
 
-        {/* ── 4 KPI Cards (BERT & LLM centered) ── */}
-        <div className="sent-hero">
-          {[
-            { label: "Sentimen Positif", cls: "sh-green", styleMono: St.monoGreen, pct1: bertStats.posPct, pct2: llmStats.posPct },
-            { label: "Sentimen Netral", cls: "sh-amber", styleMono: St.monoAmber, pct1: bertStats.neuPct, pct2: llmStats.neuPct },
-            { label: "Sentimen Negatif", cls: "sh-red", styleMono: St.monoRed, pct1: bertStats.negPct, pct2: llmStats.negPct },
-          ].map(({ label, cls, styleMono, pct1, pct2, noPercent }) => (
-            <div key={label} className={"sh-card " + cls}>
-              <div className="kpi-label">{label}</div>
-              {activeModel === "bert" && (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, marginTop: 10 }}>
-                  <div style={{ fontSize: 9, color: "var(--text-muted)", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>BERT</div>
-                  <div style={{ ...styleMono, fontSize: 26 }}>{pct1}{noPercent ? "" : "%"}</div>
-                </div>
-              )}
-              {activeModel === "llm" && (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, marginTop: 10 }}>
-                  <div style={{ fontSize: 9, color: "var(--text-muted)", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>LLM</div>
-                  <div style={{ ...styleMono, fontSize: 26 }}>{pct2}{noPercent ? "" : "%"}</div>
-                </div>
-              )}
-              {activeModel === "both" && (
-                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 20, marginTop: 10 }}>
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                    <div style={{ fontSize: 9, color: "var(--text-muted)", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>BERT</div>
-                    <div style={{ ...styleMono, fontSize: 21 }}>{pct1}{noPercent ? "" : "%"}</div>
-                  </div>
-                  <div style={{ width: 1, height: 36, background: "rgba(255,255,255,0.12)" }} />
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                    <div style={{ fontSize: 9, color: "var(--text-muted)", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>LLM</div>
-                    <div style={{ ...styleMono, fontSize: 21 }}>{pct2}{noPercent ? "" : "%"}</div>
-                  </div>
-                </div>
-              )}
-              <div className="kpi-sub" style={{ marginTop: 8, textAlign: "center" }}>
-                {noPercent ? "Skala 0-100" : `Dari ${articles.length} artikel`}
-              </div>
-            </div>
-          ))}
-        </div>
+        <SentKpiHero activeModel={activeModel} total={articles.length} stats={stats} />
 
         {/* ── Perbandingan Sentimen — Collapsible Dropdown ── */}
         {news && (
@@ -295,58 +222,7 @@ export default function BeritaSentimen() {
             </div>
 
             {/* Collapsible body */}
-            {compareOpen && (
-              <div className="card-body" style={{ animation: "fadeInDown 0.2s ease" }}>
-                {/* Score circles */}
-                <div style={{ display: "flex", justifyContent: "space-around", gap: 10, padding: "10px 0 18px 0", borderBottom: "1px solid var(--border-light)", marginBottom: 16 }}>
-                  {[
-                    { stats: bertStats, label: "Model (BERT)" },
-                    null, // divider
-                    { stats: llmStats, label: "LLM (Groq)" },
-                    null,
-                    { // agreement
-                      custom: true,
-                      bg: bertStats.overall === llmStats.overall ? "rgba(45,212,160,0.1)" : "rgba(245,183,49,0.1)",
-                      bc: bertStats.overall === llmStats.overall ? "rgba(45,212,160,0.4)" : "rgba(245,183,49,0.4)",
-                      icon: bertStats.overall === llmStats.overall ? "✓" : "≈",
-                      txt: bertStats.overall === llmStats.overall ? "Sepakat" : "Berbeda",
-                      txtColor: bertStats.overall === llmStats.overall ? "var(--green)" : "var(--amber)",
-                      sub: "Konsensus"
-                    }
-                  ].map((item, idx) => {
-                    if (item === null) return <div key={idx} style={{ borderLeft: "1px solid var(--border-light)", height: 80, alignSelf: "center" }} />
-                    if (item.custom) return (
-                      <div key={idx} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                        <div className="sent-circle" style={{ background: item.bg, borderColor: item.bc, width: 60, height: 60, borderWidth: 1.5 }}>
-                          <span style={{ fontSize: 22 }}>{item.icon}</span>
-                        </div>
-                        <div style={{ textAlign: "center" }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: item.txtColor }}>{item.txt}</div>
-                          <div style={{ fontSize: 9, color: "var(--text-muted)" }}>{item.sub}</div>
-                        </div>
-                      </div>
-                    )
-                    return (
-                      <div key={idx} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                        <div className="sent-circle" style={{ background: bgClrO(item.stats.overall), borderColor: clrO(item.stats.overall) + "55", width: "auto", height: "auto", padding: "5px 16px", borderRadius: 999, borderWidth: 1.5 }}>
-                          <span className="sent-num" style={{ color: clrO(item.stats.overall), fontSize: 13, fontFamily: "var(--font-body)" }}>{lblO(item.stats.overall)}</span>
-                        </div>
-                        <div style={{ textAlign: "center" }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: clrO(item.stats.overall) }}>{null}</div>
-                          <div style={{ fontSize: 9, color: "var(--text-muted)" }}>{item.label + " · Skor " + item.stats.score}</div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-                {/* Progress bars */}
-                <div>
-                  <CompareRow label="Positif" pct1={bertStats.posPct} pct2={llmStats.posPct} color="var(--green)" />
-                  <CompareRow label="Netral" pct1={bertStats.neuPct} pct2={llmStats.neuPct} color="var(--amber)" />
-                  <CompareRow label="Negatif" pct1={bertStats.negPct} pct2={llmStats.negPct} color="var(--red)" />
-                </div>
-              </div>
-            )}
+            {compareOpen && <SentCompare stats={stats} />}
           </div>
         )}
 
@@ -412,16 +288,7 @@ export default function BeritaSentimen() {
                   const llmMeta = SENT_META[a.llm_sentiment] || SENT_META.neutral
                   return (
                     <div className="eNews-item" key={i}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 52 }}>
-                        <div className={"eNews-score-badge " + hfMeta.cls}>
-                          <span className="esb-lbl">{hfMeta.short}</span>
-                          <span className="esb-sub">BERT <b className="esb-conf">{Math.round((a.score || 0) * 100)}</b></span>
-                        </div>
-                        <div className={"eNews-score-badge " + llmMeta.cls}>
-                          <span className="esb-lbl">{llmMeta.short}</span>
-                          <span className="esb-sub">LLM <b className="esb-conf">{Math.round((a.llm_score || 0) * 100)}</b></span>
-                        </div>
-                      </div>
+                      <ArticleBadges a={a} meta={SENT_META} />
                       <div className="eNews-body">
                         <div className="eNews-title">
                           {a.url ? <a href={a.url} target="_blank" rel="noreferrer">{a.title}</a> : a.title}
@@ -454,43 +321,10 @@ export default function BeritaSentimen() {
             <div className="card">
               <div className="card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                 <div className="card-title">📊 Distribusi Sentimen</div>
-                <div style={{ display: "flex", gap: 4 }}>
-                  <button
-                    onClick={() => setDistModel("bert")}
-                    style={{
-                      padding: "2px 8px", fontSize: 10, fontWeight: distModel === "bert" ? 700 : 400,
-                      borderRadius: 4, border: "1px solid",
-                      borderColor: distModel === "bert" ? "var(--blue)" : "rgba(255,255,255,0.1)",
-                      background: distModel === "bert" ? "rgba(96,165,250,0.18)" : "transparent",
-                      color: distModel === "bert" ? "var(--blue)" : "var(--text-muted)", cursor: "pointer", transition: "all 0.15s ease",
-                    }}
-                  >BERT</button>
-                  <button
-                    onClick={() => setDistModel("llm")}
-                    style={{
-                      padding: "2px 8px", fontSize: 10, fontWeight: distModel === "llm" ? 700 : 400,
-                      borderRadius: 4, border: "1px solid",
-                      borderColor: distModel === "llm" ? "var(--purple)" : "rgba(255,255,255,0.1)",
-                      background: distModel === "llm" ? "rgba(167,139,250,0.18)" : "transparent",
-                      color: distModel === "llm" ? "var(--purple)" : "var(--text-muted)", cursor: "pointer", transition: "all 0.15s ease",
-                    }}
-                  >LLM</button>
-                </div>
+                <DistToggle value={distModel} onChange={setDistModel} />
               </div>
               <div className="card-body">
-                {[
-                  { label: "Positif", pct: distModel === "bert" ? bertStats.posPct : llmStats.posPct, color: "var(--green)" },
-                  { label: "Netral", pct: distModel === "bert" ? bertStats.neuPct : llmStats.neuPct, color: "var(--amber)" },
-                  { label: "Negatif", pct: distModel === "bert" ? bertStats.negPct : llmStats.negPct, color: "var(--red)" },
-                ].map(({ label, pct, color }) => (
-                  <div className="sbar-row" key={label}>
-                    <span className="sbar-lbl">{label}</span>
-                    <div className="sbar-track">
-                      <div className="sbar-fill" style={{ width: pct + "%", background: color }} />
-                    </div>
-                    <span className="sbar-pct">{pct}%</span>
-                  </div>
-                ))}
+                <SentDistribution distModel={distModel} stats={stats} />
               </div>
             </div>
 
