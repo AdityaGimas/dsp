@@ -102,6 +102,10 @@ def _build_official_macro():
             "source": item.get("source", ""),
         }
         hist = item.get("history")
+        # Bullish/bearish dari TREN beberapa periode terakhir (bukan 1 periode).
+        _tr = _series_trend((hist or {}).get("data"), higher_is_bullish=(key == "GDP"))
+        cards[key]["signal"] = _tr["signal"]
+        cards[key]["trend"] = _tr
         if hist:
             charts[key] = {k: v for k, v in hist.items()}
     return cards, charts
@@ -127,6 +131,92 @@ def _try_live_bps():
     except Exception as e:
         print(f"[Macro] BPS live fetch gagal, pakai data resmi statis: {e}")
         return None
+
+
+def _compute_trend(closes, higher_is_bullish=True):
+    """
+    Tentukan TREN deret harga (IHSG/USDIDR) dari beberapa sinyal: posisi harga
+    vs MA20, MA5 vs MA20, dan momentum 1 bulan -- BUKAN dari perubahan 1 hari.
+    Mengembalikan metrik tren + `signal` dampak ke pasar saham
+    (1=bullish, -1=bearish, 0=netral/sideways).
+    """
+    try:
+        closes = closes.dropna()
+    except Exception:
+        return None
+    n = len(closes)
+    if n < 2:
+        return None
+    cur = float(closes.iloc[-1])
+    recent = closes.tail(10)
+    diffs = recent.diff().dropna()
+
+    def _pct_over(k):
+        if n > k:
+            old_p = float(closes.iloc[-1 - k])
+            return round((cur - old_p) / old_p * 100, 2) if old_p else 0.0
+        return None
+
+    week_pct = _pct_over(5)
+    month_pct = _pct_over(20)
+    ma5 = float(closes.tail(5).mean()) if n >= 5 else cur
+    ma20 = float(closes.tail(20).mean()) if n >= 20 else float(closes.mean())
+
+    # Skor tren gabungan (rentang -3..+3); makin tinggi makin uptrend.
+    score = 0
+    score += 1 if cur > ma20 else -1
+    score += 1 if ma5 > ma20 else -1
+    mp = month_pct if month_pct is not None else 0.0
+    if mp > 1.0:
+        score += 1
+    elif mp < -1.0:
+        score -= 1
+
+    if score >= 2:
+        direction = "naik"
+    elif score <= -2:
+        direction = "turun"
+    else:
+        direction = "sideways"
+
+    if direction == "sideways":
+        signal = 0
+    else:
+        up = direction == "naik"
+        bullish = up if higher_is_bullish else (not up)
+        signal = 1 if bullish else -1
+
+    return {
+        "spark": [round(float(x), 0) for x in recent.tolist()],
+        "week_pct": week_pct,
+        "month_pct": month_pct,
+        "up_days": int((diffs > 0).sum()),
+        "down_days": int((diffs < 0).sum()),
+        "ma5": round(ma5, 2),
+        "ma20": round(ma20, 2),
+        "score": score,
+        "direction": direction,
+        "signal": signal,
+    }
+
+
+def _series_trend(values, higher_is_bullish=True, lookback=3, flat_eps=0.05):
+    """
+    Tren indikator resmi (BI Rate/Inflasi/PDB) dari beberapa periode terakhir
+    (bukan hanya 1 periode). Return {direction, signal, delta}; signal = dampak
+    ke pasar saham (1=bullish, -1=bearish, 0=netral).
+    """
+    vals = [v for v in (values or []) if isinstance(v, (int, float))]
+    if len(vals) < 2:
+        return {"direction": "flat", "signal": 0, "delta": 0.0}
+    recent = vals[-lookback:] if len(vals) >= lookback else vals
+    delta = round(recent[-1] - recent[0], 2)
+    if abs(delta) <= flat_eps:
+        return {"direction": "flat", "signal": 0, "delta": delta}
+    rising = delta > 0
+    direction = "rising" if rising else "falling"
+    bullish = rising if higher_is_bullish else (not rising)
+    return {"direction": direction, "signal": (1 if bullish else -1), "delta": delta}
 
 
 @ttl_cache(600)  # cache 10 menit: data makro berubah lambat, hindari hit yfinance tiap request
@@ -176,6 +266,11 @@ def get_macro_data():
                     labels = monthly.index.strftime("%b").tolist()
                     data = [round(x, 2) if key == "USDIDR" else round(x, 0) for x in monthly.tolist()]
                     results["charts"][key] = {"labels": labels, "data": data}
+
+                if key in ("IHSG", "USDIDR"):
+                    results[key]["trend"] = _compute_trend(
+                        hist["Close"], higher_is_bullish=(key == "IHSG")
+                    )
             else:
                 results[key] = None
         except Exception:
@@ -193,5 +288,24 @@ def get_macro_data():
 
     results.update(cards)
     results["charts"].update(charts)
+
+    # Aliran dana asing (net buy/sell) pasar + TOP emiten, dari IDX
+    try:
+        from .foreign_flow import get_foreign_flow_summary, get_foreign_flow_trend
+        ff = get_foreign_flow_summary(top_n=10)
+        if ff:
+            try:
+                _fftr = get_foreign_flow_trend(days=5)
+            except Exception:
+                _fftr = None
+            if _fftr:
+                ff["trend"] = _fftr
+                ff["signal"] = _fftr["signal"]
+            else:
+                _n = ff.get("net", 0) or 0
+                ff["signal"] = 1 if _n > 0 else -1 if _n < 0 else 0
+        results["ForeignFlow"] = ff
+    except Exception:
+        results["ForeignFlow"] = None
 
     return results

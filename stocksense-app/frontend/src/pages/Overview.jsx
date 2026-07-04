@@ -32,6 +32,14 @@ const S = {
   greenV: { color: "var(--green)" },
   mutedV: { color: "var(--text-muted)" },
   kpiGrid: { gridTemplateColumns: "repeat(4,1fr)" },
+  kpiClickable: { cursor: 'pointer' },
+  kpiDetailPanel: { gridColumn: '1/-1', marginTop: 12, padding: 16, borderRadius: 12, background: 'rgba(127,127,127,0.06)', border: '1px solid var(--border)' },
+  kpiDetailHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, fontWeight: 600, fontSize: 13 },
+  kpiDetailClose: { cursor: 'pointer', fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 },
+  kpiDetailBody: { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, lineHeight: 1.6 },
+  kpiDetailRow: { fontSize: 12 },
+  kpiDetailNote: { fontSize: 11, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.6 },
+  kpiDetailList: { margin: '2px 0 2px 16px', padding: 0, fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.6 },
   gridFull: { gridColumn: "1/-1" },
   pad10: { padding: "10px 0" },
   mt4: { marginTop: 4 },
@@ -115,6 +123,8 @@ export default function Overview() {
   const [macroData, setMacroData] = useState(null)
   const [finalReco, setFinalReco] = useState(null)
   const [finalRecoBusy, setFinalRecoBusy] = useState(false)
+  const [activeKpi, setActiveKpi] = useState(null)
+  const [stockFF, setStockFF] = useState(null)
 
   const [groqTechBusy, setGroqTechBusy] = useState(false)
   const [groqTechErr, setGroqTechErr] = useState("")
@@ -152,6 +162,9 @@ export default function Overview() {
 
     setInfo(null)
     api.getStockInfo(t).then((d) => alive && setInfo(d)).catch(() => alive && setInfo(null))
+
+    setStockFF(null)
+    api.getStockForeignFlow(t).then((d) => alive && setStockFF(d.foreign_flow)).catch(() => alive && setStockFF(null))
 
     setIndicators(null)
     api
@@ -602,6 +615,118 @@ export default function Overview() {
   const sentKpiStyle = news ? (sentModel === "llm" ? sentColor2 : sentColor1) : S.tealTxt
   const grokKpiStyle = groqTech ? { color: recColor(groqTech.recommendation) } : S.purpleTxt
   const signalStyle = ov.signal ? { color: indColor(ov.signal) } : S.greenTxt
+  function renderKpiDetail() {
+    if (!activeKpi) return null
+    const meta = {
+      blue: { cls: "kpi-detail-b", ic: "📈", title: "Prediksi XGBoost vs LLM" },
+      purple: { cls: "kpi-detail-p", ic: "📊", title: "Indikator Teknikal" },
+      teal: { cls: "kpi-detail-t", ic: "📰", title: "Berita dan Sentimen" },
+      amber: { cls: "kpi-detail-a", ic: "🌍", title: "Makro Ekonomi" },
+    }[activeKpi]
+    const sigBadge = (rec) => <span className={"kpi-badge kpi-badge-" + (rec === "BUY" ? "buy" : rec === "SELL" ? "sell" : "hold")}>{recLabel(rec)}</span>
+    const ffBadge = (st) => <span className={"kpi-badge " + (st === "Net Buy" ? "kpi-badge-buy" : st === "Net Sell" ? "kpi-badge-sell" : "kpi-badge-hold")}>{st}</span>
+    const pct = (v) => ((v || 0) >= 0 ? "+" : "") + (v || 0).toFixed(2) + "%"
+    const pcls = (v) => ((v || 0) > 0 ? "pos" : (v || 0) < 0 ? "neg" : "neu")
+    let body = null
+    if (activeKpi === "blue") {
+      body = (
+        <>
+          <div className="kpi-detail-grp">
+            <div className="kpi-detail-grp-h">XGBoost (Machine Learning)</div>
+            {mlPred ? <div className="kpi-stat"><span className="kpi-stat-k">Rekomendasi</span><span className="kpi-stat-v">{sigBadge(mlPred.recommendation)}</span></div> : <div className="kpi-detail-note">Menunggu data model...</div>}
+            {mlPred ? <div className="kpi-stat"><span className="kpi-stat-k">Confidence</span><span className="kpi-stat-v">{Math.round((mlPred.confidence || 0) * 100)}%</span></div> : null}
+            {mlPred ? <div className="kpi-stat"><span className="kpi-stat-k">Akurasi model</span><span className="kpi-stat-v">{(mlPred.model_accuracy || 0).toFixed(1)}%</span></div> : null}
+            {mlPred && mlFirst ? <div className="kpi-stat"><span className="kpi-stat-k">Harga besok</span><span className="kpi-stat-v">{fmt(mlFirst.price)} ({fmt(mlFirst.price_low)}-{fmt(mlFirst.price_high)})</span></div> : null}
+            {mlPred && mlFirst ? <div className="kpi-stat"><span className="kpi-stat-k">Perubahan</span><span className={"kpi-stat-v " + pcls(mlFirst.change_pct)}>{pct(mlFirst.change_pct)}</span></div> : null}
+          </div>
+          <div className="kpi-detail-grp">
+            <div className="kpi-detail-grp-h">LLM (AI Teknikal)</div>
+            {groqTech ? <div className="kpi-stat"><span className="kpi-stat-k">Rekomendasi</span><span className="kpi-stat-v">{sigBadge(groqTech.recommendation)}</span></div> : <div className="kpi-detail-note">Menunggu data LLM...</div>}
+            {groqTech ? <div className="kpi-stat"><span className="kpi-stat-k">Confidence</span><span className="kpi-stat-v">{Math.round((groqTech.confidence || 0) * 100)}%</span></div> : null}
+            {groqTech ? <div className="kpi-stat"><span className="kpi-stat-k">Harga besok</span><span className="kpi-stat-v">{fmt(groqTech.price_tomorrow)} ({fmt(groqTech.price_tomorrow_low)}-{fmt(groqTech.price_tomorrow_high)})</span></div> : null}
+            {groqTech && groqTech.reasons && groqTech.reasons.length ? <ul className="kpi-detail-reasons">{groqTech.reasons.slice(0, 3).map((r, i) => <li key={i}>{r}</li>)}</ul> : null}
+          </div>
+          {mlPred && groqTech ? <div className="kpi-detail-note">{mlPred.recommendation === groqTech.recommendation ? "✓ Kedua model sepakat pada arah yang sama." : "⚠ Kedua model berbeda arah, pertimbangkan confidence dan akurasi masing-masing."}</div> : null}
+        </>
+      )
+    } else if (activeKpi === "purple") {
+      body = (
+        <>
+          <div className="kpi-stat"><span className="kpi-stat-k">Sinyal gabungan</span><span className="kpi-stat-v" style={signalStyle}>{ov.signal ? ov.signal.toUpperCase() : "menunggu data"}</span></div>
+          <div className="kpi-detail-note">Sinyal ini adalah kesimpulan gabungan dari RSI, MACD, Moving Average, Bollinger Bands, Stochastic, dan Volume. Buka halaman Indikator Teknikal untuk rincian tiap indikator.</div>
+        </>
+      )
+    } else if (activeKpi === "teal") {
+      const bp = { width: (bertSummary.positive_pct || 0) + "%" }
+      const bnt = { width: (bertSummary.neutral_pct || 0) + "%" }
+      const bng = { width: (bertSummary.negative_pct || 0) + "%" }
+      const lp = { width: (llmSummary.positive_pct || 0) + "%" }
+      const lnt = { width: (llmSummary.neutral_pct || 0) + "%" }
+      const lng = { width: (llmSummary.negative_pct || 0) + "%" }
+      body = news ? (
+        <>
+          <div className="kpi-detail-grp">
+            <div className="kpi-detail-grp-h">IndoBERT</div>
+            <div className="kpi-sentbar"><i className="kpi-sent-pos" style={bp} /><i className="kpi-sent-net" style={bnt} /><i className="kpi-sent-neg" style={bng} /></div>
+            <div className="kpi-sent-legend"><span className="kpi-dist-lbl">Distribusi:</span><span className="pos">Positif <b>{bertSummary.positive_pct}%</b></span><span className="neu">Netral <b>{bertSummary.neutral_pct}%</b></span><span className="neg">Negatif <b>{bertSummary.negative_pct}%</b></span></div>
+          </div>
+          <div className="kpi-detail-grp">
+            <div className="kpi-detail-grp-h">LLM</div>
+            <div className="kpi-sentbar"><i className="kpi-sent-pos" style={lp} /><i className="kpi-sent-net" style={lnt} /><i className="kpi-sent-neg" style={lng} /></div>
+            <div className="kpi-sent-legend"><span className="kpi-dist-lbl">Distribusi:</span><span className="pos">Positif <b>{llmSummary.positive_pct}%</b></span><span className="neu">Netral <b>{llmSummary.neutral_pct}%</b></span><span className="neg">Negatif <b>{llmSummary.negative_pct}%</b></span></div>
+          </div>
+          <div className="kpi-detail-note">Angka besar pada kartu adalah label agregat; skor keyakinan dihitung dari rata-rata confidence artikel berita terbaru.</div>
+        </>
+      ) : <div className="kpi-detail-note">Menunggu data berita...</div>
+    } else if (activeKpi === "amber") {
+      const tr = macroData && macroData.IHSG ? macroData.IHSG.trend : null
+      const arrow = tr ? (tr.direction === "naik" ? "▲" : tr.direction === "turun" ? "▼" : "▬") : ""
+      const acls = tr ? (tr.direction === "naik" ? "pos" : tr.direction === "turun" ? "neg" : "neu") : "neu"
+      const today = macroData && macroData.IHSG ? pct(macroData.IHSG.change_pct) : "-"
+      body = (
+        <>
+          {tr ? (
+            <div className="kpi-trend">
+              <div className={"kpi-trend-arrow " + acls}>{arrow}</div>
+              <div className="kpi-trend-main">
+                <div className={"kpi-trend-dir " + acls}>Tren {tr.direction} · {tr.signal > 0 ? "Bullish" : tr.signal < 0 ? "Bearish" : "Netral"}</div>
+                <div className="kpi-trend-sub">Dari 10 hari perdagangan terakhir: {tr.up_days} hari naik, {tr.down_days} hari turun</div>
+              </div>
+              <div className="kpi-trend-chips">
+                <div className="kpi-chip"><span className="kpi-chip-k">1 Minggu</span><span className={"kpi-chip-v " + pcls(tr.week_pct)}>{pct(tr.week_pct)}</span></div>
+                <div className="kpi-chip"><span className="kpi-chip-k">1 Bulan</span><span className={"kpi-chip-v " + pcls(tr.month_pct)}>{pct(tr.month_pct)}</span></div>
+              </div>
+            </div>
+          ) : (macroData && macroData.IHSG ? <div className="kpi-stat"><span className="kpi-stat-k">IHSG hari ini</span><span className={"kpi-stat-v " + pcls(macroData.IHSG.change_pct)}>{today}</span></div> : null)}
+          <div className="kpi-detail-grp">
+            {macroData && macroData.USDIDR ? <div className="kpi-stat"><span className="kpi-stat-k">USD/IDR</span><span className={"kpi-stat-v " + pcls(macroData.USDIDR.change_pct)}>{pct(macroData.USDIDR.change_pct)}</span></div> : null}
+            {macroData && macroData.BIRate ? <div className="kpi-stat"><span className="kpi-stat-k">BI Rate</span><span className="kpi-stat-v">{Number(macroData.BIRate.value).toFixed(2)}%</span></div> : null}
+            {macroData && macroData.Inflation ? <div className="kpi-stat"><span className="kpi-stat-k">Inflasi</span><span className="kpi-stat-v">{Number(macroData.Inflation.value).toFixed(2)}%</span></div> : null}
+            {macroData && macroData.GDP ? <div className="kpi-stat"><span className="kpi-stat-k">PDB</span><span className="kpi-stat-v">{Number(macroData.GDP.value).toFixed(2)}%</span></div> : null}
+          </div>
+          {macroData && macroData.ForeignFlow ? (
+            <div className="kpi-detail-grp">
+              <div className="kpi-detail-grp-h">Aliran Dana Asing</div>
+              <div className="kpi-stat"><span className="kpi-stat-k">Pasar (IHSG)</span><span className="kpi-stat-v">{ffBadge(macroData.ForeignFlow.status)} {fmtBig(Math.abs(macroData.ForeignFlow.net || 0))}</span></div>
+              {stockFF ? <div className="kpi-stat"><span className="kpi-stat-k">Saham ini</span><span className="kpi-stat-v">{ffBadge(stockFF.status)} {fmtBig(Math.abs(stockFF.net || 0))}</span></div> : <div className="kpi-detail-note">Aliran dana asing per-saham belum tersedia.</div>}
+            </div>
+          ) : null}
+          {!macroData ? <div className="kpi-detail-note">Menunggu data makro...</div> : null}
+          <div className="kpi-detail-note">Status kondusif atau berisiko ditentukan dari berapa banyak indikator makro yang berdampak positif ke pasar saham.</div>
+        </>
+      )
+    }
+    return (
+      <div key={activeKpi} className={"kpi-detail-panel " + meta.cls}>
+        <div className="kpi-detail-head">
+          <div className="kpi-detail-title"><span className="kpi-detail-ic">{meta.ic}</span>{meta.title}</div>
+          <button className="kpi-detail-close" onClick={() => setActiveKpi(null)}>✕ Tutup</button>
+        </div>
+        <div className="kpi-detail-body">{body}</div>
+      </div>
+    )
+  }
+
   const periods = [
     { id: "1mo", lbl: "1B" },
     { id: "3mo", lbl: "3B" },
@@ -651,6 +776,10 @@ export default function Overview() {
               <div className="meta-label">P/E Ratio</div>
               <div className="meta-val">{info?.pe_ratio ? info.pe_ratio.toFixed(1) + "x" : "—"}</div>
             </div>
+            <div className="meta-item">
+              <div className="meta-label">Dana Asing</div>
+              <div className="meta-val" style={stockFF ? (stockFF.net > 0 ? S.green : stockFF.net < 0 ? S.red : undefined) : undefined}>{stockFF ? (stockFF.net > 0 ? "▲ " : stockFF.net < 0 ? "▼ " : "") + "Rp " + (Math.abs(stockFF.net) >= 1e12 ? (Math.abs(stockFF.net) / 1e12).toFixed(2) + " T" : (Math.abs(stockFF.net) / 1e9).toFixed(2) + " M") : "—"}</div>
+            </div>
           </div>
           <div className="stock-price-block">
             <div className="stock-price">{info ? fmt(info.current_price) : "—"}</div>
@@ -668,7 +797,7 @@ export default function Overview() {
 
         <div className="kpi-grid" style={S.kpiGrid}>
           {/* Card 1: Perbandingan Prediksi XGBoost & LLM Besok */}
-          <div className="kpi-card kpi-c-blue">
+          <div className={"kpi-card kpi-c-blue" + (activeKpi === "blue" ? " kpi-active" : "")} style={S.kpiClickable} onClick={() => setActiveKpi(activeKpi === "blue" ? null : "blue")}>
             <div className="kpi-label">Prediksi XGB vs LLM (Besok)</div>
             <div className="kpi-val">
               {mlPred && groqTech ? (
@@ -699,7 +828,7 @@ export default function Overview() {
           </div>
 
           {/* Card 2: Ringkasan Indikator Teknikal */}
-          <div className="kpi-card kpi-c-purple">
+          <div className={"kpi-card kpi-c-purple" + (activeKpi === "purple" ? " kpi-active" : "")} style={S.kpiClickable} onClick={() => setActiveKpi(activeKpi === "purple" ? null : "purple")}>
             <div className="kpi-label">Indikator Teknikal</div>
             <div className="kpi-val" style={{ color: ov.signal ? indColor(ov.signal) : "var(--text-muted)" }}>
               {ov.signal ? ov.signal.toUpperCase() : "Menunggu..."}
@@ -710,7 +839,7 @@ export default function Overview() {
           </div>
 
           {/* Card 3: Ringkasan Sentimen */}
-          <div className="kpi-card kpi-c-teal">
+          <div className={"kpi-card kpi-c-teal" + (activeKpi === "teal" ? " kpi-active" : "")} style={S.kpiClickable} onClick={() => setActiveKpi(activeKpi === "teal" ? null : "teal")}>
             <div className="kpi-label">Berita dan Sentimen</div>
             <div className="kpi-val" style={{ color: news ? indColor(sentModel === "llm" ? llmSummary.overall_label : bertSummary.overall_label) : "var(--text-muted)" }}>
               {news ? (sentModel === "llm" ? llmSummary.overall_label : bertSummary.overall_label).toUpperCase() : "Menunggu..."}
@@ -724,24 +853,29 @@ export default function Overview() {
           {(() => {
             let mPos = 0, mNeg = 0;
             if (macroData) {
-              if (macroData.IHSG && macroData.IHSG.change_pct > 0) mPos++; else if (macroData.IHSG) mNeg++;
-              if (macroData.USDIDR && macroData.USDIDR.change_pct <= 0) mPos++; else if (macroData.USDIDR) mNeg++;
-              if (macroData.BIRate && macroData.BIRate.change <= 0) mPos++; else if (macroData.BIRate) mNeg++;
-              if (macroData.Inflation && macroData.Inflation.change <= 0) mPos++; else if (macroData.Inflation) mNeg++;
-              if (macroData.GDP && macroData.GDP.change > 0) mPos++; else if (macroData.GDP) mNeg++;
+              const _msig = (f) => {
+                if (!macroData[f]) return null;
+                if (f === "IHSG" || f === "USDIDR") return macroData[f].trend ? (macroData[f].trend.signal || 0) : 0;
+                return macroData[f].signal != null ? macroData[f].signal : 0;
+              };
+              ["IHSG", "USDIDR", "BIRate", "Inflation", "GDP", "ForeignFlow"].forEach((f) => {
+                const s = _msig(f);
+                if (s === 1) mPos++; else if (s === -1) mNeg++;
+              });
             }
-            const macroStatus = macroData ? (mPos > mNeg ? "KONDUSIF" : "BERISIKO") : "Menunggu...";
-            const macroColor = macroData ? (mPos > mNeg ? "var(--green)" : "var(--red)") : "var(--text-muted)";
-            const macroDesc = macroData ? `Terdapat ${mPos} dari ${mPos + mNeg} indikator makro ekonomi yang memberikan pengaruh positif.` : "—";
+            const macroStatus = macroData ? (mPos > mNeg ? "KONDUSIF" : mNeg > mPos ? "BERISIKO" : "NETRAL") : "Menunggu...";
+            const macroColor = macroData ? (mPos > mNeg ? "var(--green)" : mNeg > mPos ? "var(--red)" : "var(--amber)") : "var(--text-muted)";
+            const macroDesc = macroData ? `Terdapat ${mPos} dari 6 indikator makro ekonomi yang berdampak positif ke pasar saham.` : "—";
 
             return (
-              <div className="kpi-card kpi-c-amber">
+              <div className={"kpi-card kpi-c-amber" + (activeKpi === "amber" ? " kpi-active" : "")} style={S.kpiClickable} onClick={() => setActiveKpi(activeKpi === "amber" ? null : "amber")}>
                 <div className="kpi-label">Makro Ekonomi</div>
                 <div className="kpi-val" style={{ color: macroColor }}>{macroStatus}</div>
                 <div className="kpi-sub">{macroDesc}</div>
               </div>
             )
           })()}
+          {renderKpiDetail()}
         </div>
 
         <div className="main-grid">
@@ -957,18 +1091,16 @@ function renderIndicators(d) {
 function renderMacroCards(d) {
   if (!d) return null
   const cards = [
-    { name: "PDB (YoY)", val: (d.GDP?.value || 0) + "%", sig: d.GDP?.change_pct > 0 ? "Naik" : "Turun", desc: "Kuartal Terakhir", small: false },
-    { name: "Inflasi (YoY)", val: (d.Inflation?.value || 0) + "%", sig: d.Inflation?.change_pct > 0 ? "Naik" : "Turun", desc: "Bulan Terakhir", small: false },
-    { name: "BI Rate", val: (d.BIRate?.value || 0) + "%", sig: d.BIRate?.desc || "Tetap", desc: "Suku Bunga Acuan", small: false },
-    { name: "USD/IDR", val: "Rp " + (d.USDIDR?.value?.toLocaleString("id-ID") || 0), sig: d.USDIDR?.change_pct > 0 ? "Melemah" : "Menguat", desc: "Nilai Tukar Rupiah", small: true },
-    { name: "IHSG", val: d.IHSG?.value?.toLocaleString("id-ID") || 0, sig: d.IHSG?.change_pct > 0 ? "Bullish" : "Bearish", desc: "Indeks Harga Saham", small: true },
+    { name: "PDB (YoY)", val: (d.GDP?.value || 0) + "%", signum: d.GDP?.signal ?? 0, sig: (d.GDP?.signal ?? 0) > 0 ? "Bullish" : (d.GDP?.signal ?? 0) < 0 ? "Bearish" : "Netral", desc: "Kuartal Terakhir", small: false },
+    { name: "Inflasi (YoY)", val: (d.Inflation?.value || 0) + "%", signum: d.Inflation?.signal ?? 0, sig: (d.Inflation?.signal ?? 0) > 0 ? "Bullish" : (d.Inflation?.signal ?? 0) < 0 ? "Bearish" : "Netral", desc: "Bulan Terakhir", small: false },
+    { name: "BI Rate", val: (d.BIRate?.value || 0) + "%", signum: d.BIRate?.signal ?? 0, sig: (d.BIRate?.signal ?? 0) > 0 ? "Bullish" : (d.BIRate?.signal ?? 0) < 0 ? "Bearish" : "Netral", desc: "Suku Bunga Acuan", small: false },
+    { name: "USD/IDR", val: "Rp " + (d.USDIDR?.value?.toLocaleString("id-ID") || 0), signum: d.USDIDR?.trend ? (d.USDIDR.trend.signal || 0) : 0, sig: (d.USDIDR?.trend?.signal || 0) > 0 ? "Menguat" : (d.USDIDR?.trend?.signal || 0) < 0 ? "Melemah" : "Stabil", desc: "Nilai Tukar Rupiah", small: true },
+    { name: "IHSG", val: d.IHSG?.value?.toLocaleString("id-ID") || 0, signum: d.IHSG?.trend ? (d.IHSG.trend.signal || 0) : 0, sig: (d.IHSG?.trend?.signal || 0) > 0 ? "Bullish" : (d.IHSG?.trend?.signal || 0) < 0 ? "Bearish" : "Netral", desc: "Indeks Harga Saham", small: true },
+    { name: "Dana Asing", val: d.ForeignFlow ? ((d.ForeignFlow.net || 0) >= 0 ? "+" : "-") + fmtBig(Math.abs(d.ForeignFlow.net || 0)) : "—", signum: d.ForeignFlow?.signal ?? 0, sig: (d.ForeignFlow?.signal ?? 0) > 0 ? "Masuk" : (d.ForeignFlow?.signal ?? 0) < 0 ? "Keluar" : "Netral", desc: "Aliran Dana Asing (tren 5 hari)", small: true },
   ]
 
   return cards.map((c, i) => {
-    let sigVal = "Netral"
-    if (c.name === "USD/IDR") sigVal = c.sig === "Menguat" ? "Beli" : "Jual"
-    else if (c.name === "Inflasi (YoY)") sigVal = c.sig === "Turun" ? "Beli" : "Jual"
-    else sigVal = (c.sig === "Naik" || c.sig === "Bullish") ? "Beli" : (c.sig === "Tetap" ? "Netral" : "Jual")
+    let sigVal = c.signum > 0 ? "Beli" : c.signum < 0 ? "Jual" : "Netral"
 
     const col = indColor(sigVal)
     const valStyle = c.small ? { color: col, fontSize: 13 } : { color: col }
@@ -1046,7 +1178,6 @@ function renderDualPred(ml, grok, busy, info) {
         {"H+1: " + fmt(grok.price_tomorrow)}
       </span>
       <div className="pred-src-meta">
-        <div className="pred-src-row"><span className="pred-src-k">Confidence</span><span className="pred-src-v">{Math.round((grok.confidence || 0) * 100) + "%"}</span></div>
         <div className="pred-src-row"><span className="pred-src-k">Rekomendasi</span><span className="pred-src-v" style={grokRecStyle}>{recLabel(grok.recommendation || "HOLD")}</span></div>
         {[
           { lbl: "H+1", price: grok.price_tomorrow, lo: grok.price_tomorrow_low, hi: grok.price_tomorrow_high },
@@ -1054,6 +1185,7 @@ function renderDualPred(ml, grok, busy, info) {
           { lbl: "H+3", price: grok.day3_price, lo: grok.day3_low, hi: grok.day3_high },
         ].filter(r => r.price).map((r, i) => {
           let cColor = "var(--text-primary)";
+          const dConf = predDayConf(grok, { "H+1": 0, "H+2": 1, "H+3": 2 }[r.lbl], info)
           if (info && info.current_price) {
             cColor = r.price >= info.current_price ? "var(--green)" : "var(--red)";
           }
@@ -1063,6 +1195,7 @@ function renderDualPred(ml, grok, busy, info) {
               <span className="pred-src-v" style={{ color: cColor }}>
                 {fmt(r.price)}&nbsp;
                 {r.lo && r.hi ? <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: 9 }}>({fmt(r.lo)}–{fmt(r.hi)})</span> : null}
+                {dConf != null ? <span style={predConfSpanStyle}> · Conf {dConf}%</span> : null}
               </span>
             </div>
           )
@@ -1085,6 +1218,31 @@ function renderDualPred(ml, grok, busy, info) {
   )
 }
 
+function predDayConf(grok, idx, info) {
+  if (!grok || idx == null) return null
+  const llmArr = [grok.day1_confidence, grok.day2_confidence, grok.day3_confidence]
+  if (llmArr[idx] != null) return Math.round(llmArr[idx] * 100)
+  const base = grok.confidence != null ? grok.confidence : 0.6
+  const decayArr = [1, 0.88, 0.76]
+  const decay = decayArr[idx] != null ? decayArr[idx] : 0.7
+  let conf = base * decay
+  const bands = [
+    { price: grok.price_tomorrow, lo: grok.price_tomorrow_low, hi: grok.price_tomorrow_high },
+    { price: grok.day2_price, lo: grok.day2_low, hi: grok.day2_high },
+    { price: grok.day3_price, lo: grok.day3_low, hi: grok.day3_high },
+  ]
+  const b = bands[idx]
+  if (b && b.price && b.lo && b.hi) {
+    const rel = Math.abs(b.hi - b.lo) / b.price
+    const adj = Math.max(0.6, 1 - rel * 4)
+    conf = conf * adj
+  }
+  conf = Math.max(0.3, Math.min(0.95, conf))
+  return Math.round(conf * 100)
+}
+
+const predConfSpanStyle = { color: "var(--purple)", fontWeight: 600, fontSize: 9 }
+
 function renderPredGrid(ml, grok, info) {
   if (!ml || !ml.predictions || !ml.predictions.length) {
     const e = { gridColumn: "1/-1", color: "var(--text-muted)", fontSize: 12, textAlign: "center", padding: "12px 0" }
@@ -1095,6 +1253,7 @@ function renderPredGrid(ml, grok, info) {
   const gap = { height: 12 }
   const mt4 = { marginTop: 4 }
   const mutedChg = { color: "var(--text-muted)" }
+  const confStyle = { fontSize: 9, color: "var(--purple)", marginTop: 2, fontWeight: 600 }
   const cells = [
     <div className="pred-day today-day" key="today">
       <div className="pred-date-lbl">{`${DAY_ID[today.getDay()]} ${today.getDate()} ${MON_ID[today.getMonth()]}`}</div>
@@ -1151,6 +1310,9 @@ function renderPredGrid(ml, grok, info) {
                 </div>
               )}
               <div className="pred-chg" style={gChgStyle}>{(gUp ? "+" : "") + gChangePct.toFixed(2) + "%"}</div>
+              {predDayConf(grok, i, info) != null && (
+                <div style={confStyle}>Conf {predDayConf(grok, i, info)}%</div>
+              )}
             </div>
           ) : null}
         </div>
@@ -1197,7 +1359,7 @@ function renderFinalReco(ml, grok, news, apiRes, busy, onGenerate) {
             { icon: "📊", label: "Moving Average" },
             { icon: "🎰", label: "Bollinger & Stochastic" },
             { icon: "📰", label: "Sentimen Berita" },
-            { icon: "🌍", label: "Makro Ekonomi" },
+            { icon: "���", label: "Makro Ekonomi" },
             { icon: "💹", label: "Volume & Momentum" },
           ].map((f, i) => (
             <div className="reco-empty-factor-chip" key={i}>
@@ -1440,9 +1602,9 @@ function renderSentiment(news, err, busy, aiSummary, sentModel, setSentModel, be
     const overallColor = data.overall === "positive" ? "var(--green)" : data.overall === "negative" ? "var(--red)" : "var(--amber)"
     const overallLabel = data.overall === "positive" ? "Positif" : data.overall === "negative" ? "Negatif" : "Netral"
     const circleBg = data.overall === "positive" ? "rgba(45,212,160,0.1)" : data.overall === "negative" ? "rgba(245,94,94,0.1)" : "rgba(245,183,49,0.1)"
-    const circleStyle = { background: circleBg, borderColor: overallColor + "40" }
+    const circleStyle = { background: circleBg, border: "1.5px solid " + overallColor + "55", color: overallColor, padding: "10px 22px", borderRadius: 12, fontSize: 20, fontWeight: 800, alignSelf: "center", display: "inline-flex", alignItems: "center", lineHeight: 1 }
     const numStyle = { color: overallColor }
-    const headStyle = { color: overallColor }
+    const headStyle = { color: "var(--text-primary)", fontSize: 15 }
     const posFill = { width: (data.positive_pct || 0) + "%", background: "var(--green)" }
     const neuFill = { width: (data.neutral_pct || 0) + "%", background: "var(--amber)" }
     const negFill = { width: (data.negative_pct || 0) + "%", background: "var(--red)" }
@@ -1450,12 +1612,10 @@ function renderSentiment(news, err, busy, aiSummary, sentModel, setSentModel, be
     return (
       <>
         <div className="sent-top">
-          <div className="sent-circle" style={circleStyle}>
-            <span className="sent-num" style={numStyle}>{data.score || "—"}</span>
-          </div>
+          <div className="sent-pill-lg" style={circleStyle}>{overallLabel}</div>
           <div className="sent-info">
-            <h4 style={headStyle}>{overallLabel}</h4>
-            <p>{(news.total_articles || 0) + ` artikel dianalisis · ${title}`}</p>
+            <h4 style={headStyle}>{(news.total_articles || 0) + " artikel dianalisis"}</h4>
+            <p>{title + ` · Skor confidence ${data.score}`}</p>
           </div>
         </div>
         <div className="sbar-row">
@@ -1515,24 +1675,24 @@ function renderSentiment(news, err, busy, aiSummary, sentModel, setSentModel, be
         <div className="sent-top" style={{ display: "flex", justifyContent: "space-around", gap: 10, padding: "10px 0 16px 0", borderBottom: "1px solid var(--border-light)", marginBottom: 14 }}>
           {/* Left: BERT */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-            <div className="sent-circle" style={{ ...circleStyle1, width: 56, height: 56, borderWidth: 1.5 }}>
-              <span className="sent-num" style={{ ...numStyle1, fontSize: 16 }}>{bertSummary.score || "—"}</span>
+            <div className="sent-circle" style={{ ...circleStyle1, width: "auto", height: "auto", padding: "5px 16px", borderRadius: 999, borderWidth: 1.5 }}>
+              <span className="sent-num" style={{ ...numStyle1, fontSize: 13, fontFamily: "var(--font-body)" }}>{overallLabel1}</span>
             </div>
             <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, ...numStyle1 }}>{overallLabel1}</div>
-              <div style={{ fontSize: 9, color: "var(--text-muted)" }}>Model (BERT)</div>
+              <div style={{ fontSize: 11, fontWeight: 700, ...numStyle1 }}>{null}</div>
+              <div style={{ fontSize: 9, color: "var(--text-muted)" }}>Model (BERT) · Skor {bertSummary.score}</div>
             </div>
           </div>
           {/* Divider */}
           <div style={{ borderLeft: "1px solid var(--border-light)", height: 70, alignSelf: "center" }} />
           {/* Right: LLM */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-            <div className="sent-circle" style={{ ...circleStyle2, width: 56, height: 56, borderWidth: 1.5 }}>
-              <span className="sent-num" style={{ ...numStyle2, fontSize: 16 }}>{llmSummary.score || "—"}</span>
+            <div className="sent-circle" style={{ ...circleStyle2, width: "auto", height: "auto", padding: "5px 16px", borderRadius: 999, borderWidth: 1.5 }}>
+              <span className="sent-num" style={{ ...numStyle2, fontSize: 13, fontFamily: "var(--font-body)" }}>{overallLabel2}</span>
             </div>
             <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, ...numStyle2 }}>{overallLabel2}</div>
-              <div style={{ fontSize: 9, color: "var(--text-muted)" }}>LLM (Groq)</div>
+              <div style={{ fontSize: 11, fontWeight: 700, ...numStyle2 }}>{null}</div>
+              <div style={{ fontSize: 9, color: "var(--text-muted)" }}>LLM (Groq) · Skor {llmSummary.score}</div>
             </div>
           </div>
         </div>
@@ -1584,12 +1744,12 @@ function renderNews(news, err, busy) {
         {/* Dual score badges */}
         <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 52 }}>
           <div className={"eNews-score-badge " + hfMeta.cls}>
-            {Math.round((a.score || 0) * 100)}
-            <span className="esb-sub">BERT: {hfMeta.short}</span>
+            <span className="esb-lbl">{hfMeta.short}</span>
+            <span className="esb-sub">BERT <b className="esb-conf">{Math.round((a.score || 0) * 100)}</b></span>
           </div>
           <div className={"eNews-score-badge " + llmMeta.cls}>
-            {Math.round((a.llm_score || 0) * 100)}
-            <span className="esb-sub">LLM: {llmMeta.short}</span>
+            <span className="esb-lbl">{llmMeta.short}</span>
+            <span className="esb-sub">LLM <b className="esb-conf">{Math.round((a.llm_score || 0) * 100)}</b></span>
           </div>
         </div>
 

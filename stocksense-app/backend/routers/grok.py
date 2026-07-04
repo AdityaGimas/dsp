@@ -13,7 +13,7 @@ router = APIRouter()
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 # Model berbeda tiap endpoint -> rate limit tidak cepat habis
-MODEL_TECHNICAL  = "llama-3.1-8b-instant"
+MODEL_TECHNICAL  = "llama-3.3-70b-versatile"
 MODEL_NEWS       = "llama-3.3-70b-versatile"
 MODEL_FINAL_RECO = "llama-3.3-70b-versatile"
 
@@ -126,6 +126,7 @@ TECH_SCHEMA = (
     '{"price_tomorrow": <angka Rupiah>, "price_tomorrow_low": <angka>, "price_tomorrow_high": <angka>, '
     '"day2_price": <angka>, "day2_low": <angka>, "day2_high": <angka>, '
     '"day3_price": <angka>, "day3_low": <angka>, "day3_high": <angka>, '
+    '"day1_confidence": <0.0-1.0>, "day2_confidence": <0.0-1.0>, "day3_confidence": <0.0-1.0>, '
     '"price_range_3d": {"min": <angka>, "max": <angka>}, '
     '"recommendation": "BUY|SELL|HOLD", "confidence": <0.0-1.0>, '
     '"reasons": ["alasan singkat 1", "alasan 2", "alasan 3"], '
@@ -177,7 +178,7 @@ class TechReq(BaseModel):
 
 @router.post("/technical")
 async def groq_technical(req: TechReq):
-    """Model: llama-3.1-8b-instant - analisis teknikal -> estimasi harga 3 hari."""
+    """Model: llama-3.3-70b-versatile - analisis teknikal -> estimasi harga 3 hari."""
     ind = req.indicators
     ml  = req.ml_prediction or {}
     ma  = ind.get('moving_average', {})
@@ -202,6 +203,7 @@ ATURAN WAJIB (ikuti dengan ketat):
    - selain itu (relatif datar)              -> "HOLD"
    DILARANG memberi "BUY" bila harga diprediksi turun, atau "SELL" bila diprediksi naik.
 4. "confidence" (0.0-1.0) mencerminkan seberapa kuat & sepakat indikator; turunkan bila sinyal bertentangan.
+4b. "day1_confidence", "day2_confidence", "day3_confidence" (0.0-1.0) = keyakinanmu pada prediksi harga MASING-MASING hari (H+1, H+2, H+3), dinilai murni dari kekuatan sinyal, kejelasan tren, dan konsistensi indikator untuk hari tersebut. Nilai boleh berbeda antar hari sesuai keyakinan nyatamu; JANGAN menyamakan ketiganya. JANGAN membuat pola menurun otomatis hanya karena harinya lebih jauh (H+2/H+3) — nilai kecil hanya jika analisisnya memang kurang meyakinkan.
 5. "detailed_explanation" WAJIB berisi penjelasan naratif lengkap mengenai semua nilai indikator (RSI, MACD, MA, Bollinger, Stochastic, Volume) secara detail.
 
 Balas HANYA JSON valid berikut tanpa teks lain. Ganti SETIAP placeholder <...> dengan hasil analisismu (angka Rupiah, bukan contoh):
@@ -325,13 +327,37 @@ INDIKATOR TEKNIKAL:
         bi       = macro.get("BIRate", {})
         gdp      = macro.get("GDP", {})
         infl     = macro.get("Inflation", {})
+        ihsg_tr  = ihsg.get("trend", {}) or {}
+        _wp = ihsg_tr.get("week_pct") or 0
+        _mp = ihsg_tr.get("month_pct") or 0
+        if ihsg_tr:
+            ihsg_trend_txt = "Tren " + str(ihsg_tr.get("direction", "?")) + " (1 minggu " + ("+" if _wp >= 0 else "") + format(_wp, ".2f") + "%, 1 bulan " + ("+" if _mp >= 0 else "") + format(_mp, ".2f") + "%, " + str(ihsg_tr.get("up_days", "?")) + " hari naik vs " + str(ihsg_tr.get("down_days", "?")) + " hari turun dari 10 hari terakhir)"
+        else:
+            ihsg_trend_txt = "Tren tidak tersedia"
         macro_str = f"""
 KONDISI MAKRO INDONESIA:
-- IHSG: {ihsg.get('value','?')} ({ihsg.get('change_pct',0):+.2f}%, {'Bullish' if (ihsg.get('change_pct') or 0) > 0 else 'Bearish'})
+- IHSG: {ihsg.get('value','?')} (hari ini {ihsg.get('change_pct',0):+.2f}%). {ihsg_trend_txt}. Analisa IHSG sebagai TREN (arah beberapa waktu terakhir), bukan hanya perubahan hari ini.
 - USD/IDR: Rp {usd.get('value','?'):,} ({usd.get('change_pct',0):+.2f}%, {'Rupiah melemah' if (usd.get('change_pct') or 0) > 0 else 'Rupiah menguat'})
 - BI Rate: {bi.get('value','?')}% ({bi.get('desc','?')})
 - PDB (YoY): {gdp.get('value','?')}% ({gdp.get('desc','?')})
 - Inflasi (YoY): {infl.get('value','?')}% ({infl.get('desc','?')})"""
+
+    # --- Aliran dana asing (foreign net buy/sell) ---
+    ff_payload = None
+    ff_market_txt = "- Aliran Dana Asing (pasar): tidak tersedia"
+    ff_stock_txt = ""
+    try:
+        from services.foreign_flow import get_foreign_flow, get_stock_foreign_flow
+        _ffall = get_foreign_flow()
+        _ffm = (_ffall or {}).get("market")
+        _ffs = get_stock_foreign_flow(req.ticker)
+        ff_payload = {"market": _ffm, "stock": _ffs, "date": (_ffall or {}).get("date")}
+        if _ffm:
+            ff_market_txt = "- Aliran Dana Asing (pasar/IHSG): " + str(_ffm.get("status")) + " (net asing Rp " + format(_ffm.get("net") or 0, ",.0f") + ") -> " + ("dana asing MASUK" if (_ffm.get("net") or 0) > 0 else "dana asing KELUAR")
+        if _ffs:
+            ff_stock_txt = "- Aliran Dana Asing (" + str(req.ticker) + "): " + str(_ffs.get("status")) + " (net asing Rp " + format(_ffs.get("net") or 0, ",.0f") + ")"
+    except Exception:
+        ff_payload = None
 
     # --- Sentimen detail ---
     sent_str = ""
@@ -396,10 +422,13 @@ PREDIKSI ML (XGBoost):
 {ind_str}
 {sent_str}
 {macro_str}
+{ff_market_txt}
+{ff_stock_txt}
 
 ATURAN WAJIB:
 1. Evaluasi SETIAP faktor di atas dan berikan signal (BUY/SELL/HOLD), weight (kepentingan 0-100), score (kekuatan sinyal 0-100), dan explanation detail dalam bahasa Indonesia.
-2. "weight" untuk tiap faktor HARUS dibagikan sama rata (misal masing-masing 10 untuk total 10 faktor), sehingga tidak ada faktor yang dominan atau bertentangan.
+2. "weight" tiap faktor TIDAK boleh sama rata - bedakan sesuai besar pengaruhnya terhadap rekomendasi akhir, dengan TOTAL seluruh weight HARUS = 100. Gunakan bobot dasar berikut sebagai acuan (boleh kamu sesuaikan hingga plus/minus 3 poin sesuai kondisi terkini, tetapi totalnya tetap 100): Prediksi ML (XGBoost)=20, Analisis Teknikal LLM=12, MACD (Tren)=10, Moving Average=10, RSI (Momentum)=9, Sentimen Berita=9, Makro Ekonomi=9, Volume=8, Bollinger Bands=7, Stochastic=6. Faktor berbobot besar (Prediksi ML, MACD, Moving Average) harus lebih menentukan arah rekomendasi dibanding faktor berbobot kecil (Stochastic, Bollinger Bands).
+2b. Untuk faktor "Makro Ekonomi", di dalam "explanation" WAJIB sebutkan sub-faktor makro mana (IHSG, USD/IDR, BI Rate, Inflasi, atau PDB) yang PALING mempengaruhi pergerakan saham ini saat ini beserta alasan singkatnya, dan urutkan pengaruhnya dari yang terbesar. Pertimbangkan juga ALIRAN DANA ASING (net buy/sell): net buy berarti dana asing masuk (positif), net sell berarti dana asing keluar (tekanan jual).
 3. Timbang semua sinyal. Mayoritas bullish -> condong "BUY"; mayoritas bearish -> condong "SELL"; bila bertentangan -> "HOLD".
 4. "final_recommendation" HARUS konsisten dengan level harga:
    - "BUY"  : take_profit_1 & take_profit_2 DI ATAS entry_price, stop_loss DI BAWAH entry_price
@@ -413,7 +442,7 @@ Balas HANYA JSON valid berikut tanpa teks lain (ganti tiap placeholder <...> den
 """ + FINAL_SCHEMA
     res  = await groq_chat_rotate([{"role": "user", "content": prompt}], MODEL_FINAL_RECO, max_tokens=1200, api_key=req.api_key, json_mode=True)
     data = parse_json(res["choices"][0]["message"]["content"])
-    return {"ticker": req.ticker, **data}
+    return {"ticker": req.ticker, "foreign_flow": ff_payload, **data}
 
 
 # 4. MAKRO EKONOMI
@@ -423,26 +452,39 @@ class MacroReq(BaseModel):
 
 @router.post("/macro")
 async def groq_macro(req: MacroReq):
-    """Model: llama-3.1-8b-instant - analisis data makro ekonomi."""
+    """Model: llama-3.3-70b-versatile - analisis data makro ekonomi."""
     m = req.macro_data
     ihsg = m.get('IHSG', {})
     usd = m.get('USDIDR', {})
     bi = m.get('BIRate', {})
     gdp = m.get('GDP', {})
     infl = m.get('Inflation', {})
+    ihsg_tr = ihsg.get("trend", {}) or {}
+    _wp = ihsg_tr.get("week_pct") or 0
+    _mp = ihsg_tr.get("month_pct") or 0
+    if ihsg_tr:
+        ihsg_trend_txt = "Tren " + str(ihsg_tr.get("direction", "?")) + " (1 minggu " + ("+" if _wp >= 0 else "") + format(_wp, ".2f") + "%, 1 bulan " + ("+" if _mp >= 0 else "") + format(_mp, ".2f") + "%, " + str(ihsg_tr.get("up_days", "?")) + " naik vs " + str(ihsg_tr.get("down_days", "?")) + " turun / 10 hari)"
+    else:
+        ihsg_trend_txt = "Tren tidak tersedia"
     
+    ff = m.get("ForeignFlow", {}) or {}
+    if ff:
+        ff_txt = "Aliran dana asing pasar: " + str(ff.get("status", "?")) + " (net Rp " + format(ff.get("net") or 0, ",.0f") + ")"
+    else:
+        ff_txt = "Aliran dana asing: tidak tersedia"
     prompt = f"""Kamu analis ekonomi makro Indonesia. Analisis data makro terkini dan dampaknya terhadap pasar saham secara keseluruhan.
 
 DATA MAKRO TERKINI:
-- IHSG: {ihsg.get('value','?')} ({ihsg.get('change_pct',0):+.2f}%)
+- IHSG: {ihsg.get('value','?')} (hari ini {ihsg.get('change_pct',0):+.2f}%). {ihsg_trend_txt}
 - USD/IDR: Rp {usd.get('value','?'):,} ({usd.get('change_pct',0):+.2f}%)
 - BI Rate: {bi.get('value','?')}% ({bi.get('desc','?')})
 - PDB (YoY): {gdp.get('value','?')}% ({gdp.get('desc','?')})
 - Inflasi (YoY): {infl.get('value','?')}% ({infl.get('desc','?')})
+- {ff_txt}
 
 ATURAN WAJIB:
 1. "impact_on_market" tentukan apakah kondisi makro saat ini cenderung Positif, Negatif, atau Netral untuk pasar saham secara keseluruhan.
-2. "detailed_analysis" WAJIB berupa paragraf naratif yang menganalisis kelima data di atas (IHSG, kurs, suku bunga, PDB, dan inflasi) menjadi satu kesatuan cerita mengenai dampaknya terhadap pasar.
+2. "detailed_analysis" WAJIB berupa paragraf naratif yang menganalisis kelima data di atas (IHSG, kurs, suku bunga, PDB, dan inflasi) menjadi satu kesatuan cerita mengenai dampaknya terhadap pasar. Khusus IHSG, analisa sebagai TREN (arah pergerakan beberapa waktu terakhir), bukan hanya angka hari ini. Sertakan juga dampak ALIRAN DANA ASING (net buy/sell) terhadap kondisi pasar.
 
 Balas HANYA JSON valid berikut tanpa teks lain (ganti placeholder <...>):
 """ + MACRO_SCHEMA

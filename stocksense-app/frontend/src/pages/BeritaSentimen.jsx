@@ -236,7 +236,6 @@ export default function BeritaSentimen() {
             { label: "Sentimen Positif", cls: "sh-green", styleMono: St.monoGreen, pct1: bertStats.posPct, pct2: llmStats.posPct },
             { label: "Sentimen Netral", cls: "sh-amber", styleMono: St.monoAmber, pct1: bertStats.neuPct, pct2: llmStats.neuPct },
             { label: "Sentimen Negatif", cls: "sh-red", styleMono: St.monoRed, pct1: bertStats.negPct, pct2: llmStats.negPct },
-            { label: "Skor Agregat", cls: "sh-blue", styleMono: St.monoBlue, pct1: bertStats.score, pct2: llmStats.score, noPercent: true },
           ].map(({ label, cls, styleMono, pct1, pct2, noPercent }) => (
             <div key={label} className={"sh-card " + cls}>
               <div className="kpi-label">{label}</div>
@@ -329,12 +328,12 @@ export default function BeritaSentimen() {
                     )
                     return (
                       <div key={idx} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                        <div className="sent-circle" style={{ background: bgClrO(item.stats.overall), borderColor: clrO(item.stats.overall) + "40", width: 60, height: 60, borderWidth: 1.5 }}>
-                          <span className="sent-num" style={{ color: clrO(item.stats.overall), fontSize: 17 }}>{item.stats.score}</span>
+                        <div className="sent-circle" style={{ background: bgClrO(item.stats.overall), borderColor: clrO(item.stats.overall) + "55", width: "auto", height: "auto", padding: "5px 16px", borderRadius: 999, borderWidth: 1.5 }}>
+                          <span className="sent-num" style={{ color: clrO(item.stats.overall), fontSize: 13, fontFamily: "var(--font-body)" }}>{lblO(item.stats.overall)}</span>
                         </div>
                         <div style={{ textAlign: "center" }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: clrO(item.stats.overall) }}>{lblO(item.stats.overall)}</div>
-                          <div style={{ fontSize: 9, color: "var(--text-muted)" }}>{item.label}</div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: clrO(item.stats.overall) }}>{null}</div>
+                          <div style={{ fontSize: 9, color: "var(--text-muted)" }}>{item.label + " · Skor " + item.stats.score}</div>
                         </div>
                       </div>
                     )
@@ -415,12 +414,12 @@ export default function BeritaSentimen() {
                     <div className="eNews-item" key={i}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 52 }}>
                         <div className={"eNews-score-badge " + hfMeta.cls}>
-                          {Math.round((a.score || 0) * 100)}
-                          <span className="esb-sub">HF: {hfMeta.short}</span>
+                          <span className="esb-lbl">{hfMeta.short}</span>
+                          <span className="esb-sub">BERT <b className="esb-conf">{Math.round((a.score || 0) * 100)}</b></span>
                         </div>
                         <div className={"eNews-score-badge " + llmMeta.cls}>
-                          {Math.round((a.llm_score || 0) * 100)}
-                          <span className="esb-sub">LLM: {llmMeta.short}</span>
+                          <span className="esb-lbl">{llmMeta.short}</span>
+                          <span className="esb-sub">LLM <b className="esb-conf">{Math.round((a.llm_score || 0) * 100)}</b></span>
                         </div>
                       </div>
                       <div className="eNews-body">

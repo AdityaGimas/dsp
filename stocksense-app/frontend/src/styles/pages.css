@@ -1096,7 +1096,7 @@
 /* ---- BERITA & SENTIMEN ---- */
 .sent-hero {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 10px;
     margin-bottom: 16px
 }
@@ -1206,17 +1206,15 @@
 
 .eNews-score-badge {
     flex-shrink: 0;
-    width: 42px;
-    height: 42px;
+    width: 48px;
+    min-height: 42px;
+    padding: 4px 0;
     border-radius: var(--r-sm);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    font-family: var(--font-mono);
-    font-size: 13px;
-    font-weight: 700;
-    line-height: 1
+    line-height: 1.15
 }
 
 .esb-pos {
@@ -1234,12 +1232,26 @@
     color: var(--red)
 }
 
+.esb-lbl {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    font-family: var(--font-body)
+}
+
 .esb-sub {
     font-size: 8px;
     font-weight: 400;
     font-family: var(--font-body);
-    margin-top: 2px;
-    opacity: 0.7
+    margin-top: 3px;
+    opacity: 0.6;
+    text-transform: uppercase;
+    letter-spacing: 0.3px
+}
+
+.esb-conf {
+    font-weight: 600;
+    opacity: 0.85
 }
 
 .eNews-body {
@@ -1444,7 +1456,7 @@
 /* ---- MAKRO EKONOMI ---- */
 .macro-hero {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     gap: 10px;
     margin-bottom: 16px
 }
@@ -2058,3 +2070,4 @@
 .chat-textarea::placeholder {
     color: var(--text-muted)
 }
+.mh-teal::before { background: var(--teal); }

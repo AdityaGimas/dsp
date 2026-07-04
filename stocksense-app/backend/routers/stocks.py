@@ -56,3 +56,14 @@ def technical_indicators(ticker: str, refresh: bool = Query(False, description=_
         return get_technical_indicators(ticker, _refresh=refresh)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{ticker}/foreign-flow")
+def stock_foreign_flow(ticker: str):
+    """
+    Aliran dana asing (net buy/sell) satu emiten dalam nilai rupiah.
+    Contoh: /api/stocks/BBCA.JK/foreign-flow
+    """
+    from services.foreign_flow import get_stock_foreign_flow
+
+    return {"ticker": ticker, "foreign_flow": get_stock_foreign_flow(ticker)}
