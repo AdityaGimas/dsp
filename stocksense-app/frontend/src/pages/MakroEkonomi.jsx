@@ -16,6 +16,12 @@ const St = {
   sumLabels: { display: "flex", justifyContent: "space-between", marginTop: 8 },
   green: { fontSize: 11, fontWeight: 500, color: "var(--green)" },
   red: { fontSize: 11, fontWeight: 500, color: "var(--red)" },
+  wDriver: { fontSize: 11, color: "var(--text-secondary)", marginTop: 12, marginBottom: 2 },
+  wRows: { display: "flex", flexDirection: "column", gap: 6, marginTop: 10 },
+  wRow: { display: "flex", alignItems: "center", gap: 8 },
+  wLbl: { fontSize: 10, width: 74, color: "var(--text-muted)" },
+  wTrack: { flex: 1, height: 6, background: "rgba(255,255,255,0.06)", borderRadius: 3, overflow: "hidden" },
+  wPct: { fontSize: 10, width: 34, textAlign: "right", color: "var(--text-secondary)", fontFamily: "var(--font-mono)" },
 }
 
 // Fallback (dipakai hanya bila backend belum mengirim charts).
@@ -54,6 +60,11 @@ function fmtFlow(n) {
 
 function heroSigWord(sig) {
   return sig > 0 ? "Bullish (positif bagi saham)" : sig < 0 ? "Bearish (negatif bagi saham)" : "Netral"
+}
+
+function wBarStyle(r) {
+  const c = r.sig === 1 ? "var(--green)" : r.sig === -1 ? "var(--red)" : "var(--amber)"
+  return { width: r.pct + "%", height: "100%", borderRadius: 3, background: c }
 }
 
 function HeroDetailBox({ title, cls, ch, dir, sub, chips }) {
@@ -236,7 +247,7 @@ export default function MakroEkonomi() {
     setAiBusy(true)
     setAiErr("")
     try {
-      const res = await api.groqMacro({ macro_data: macroData })
+      const res = await api.groqMacro({ macro_data: macroData, verdict: macroVerdict })
       setAiData(res)
     } catch (e) {
       setAiErr(e.message)
@@ -328,18 +339,53 @@ export default function MakroEkonomi() {
   const srcLine = (c) =>
     c && c.source ? "Sumber: " + c.source + (c.updated ? " · " + c.updated : "") : ""
 
-  let posCount = hero.filter(h => h.sig === 1).length
-  let negCount = hero.filter(h => h.sig === -1).length
-  let totalCount = posCount + negCount
+  // Kesimpulan berbobot: bobot dasar x pengali magnitudo.
+  // Bobot dasar = kepentingan tiap indikator bagi pasar saham Indonesia.
+  const BASE_W = { IHSG: 25, ForeignFlow: 20, USDIDR: 20, BIRate: 15, Inflation: 10, GDP: 10 }
+  // Pengali magnitudo (0.5x-2x): makin ekstrem gerakan indikator, makin besar.
+  // Gerakan sebesar "ref" ~ 1x, dua kali lipat = 2x, nyaris diam = 0.5x.
+  const magMult = (x, ref) => Math.max(Math.min(Math.abs(Number(x) || 0) / ref, 2), 0.5)
+  const MAG = {
+    IHSG: magMult(m.IHSG && m.IHSG.trend ? m.IHSG.trend.month_pct : 0, 3),
+    USDIDR: magMult(m.USDIDR && m.USDIDR.trend ? m.USDIDR.trend.month_pct : 0, 2),
+    BIRate: magMult(m.BIRate ? m.BIRate.change : 0, 0.5),
+    Inflation: magMult(m.Inflation ? m.Inflation.change : 0, 0.5),
+    GDP: magMult(m.GDP ? m.GDP.change : 0, 0.3),
+    ForeignFlow: magMult(m.ForeignFlow ? (m.ForeignFlow.net || 0) / 1e12 : 0, 2),
+  }
+  const HERO_KEY = ["IHSG", "USDIDR", "BIRate", "Inflation", "GDP", "ForeignFlow"]
+  const rawW = hero.map((h, i) => ({
+    key: HERO_KEY[i],
+    label: h.label,
+    sig: h.sig,
+    w: BASE_W[HERO_KEY[i]] * MAG[HERO_KEY[i]],
+  }))
+  const totW = rawW.reduce((s, r) => s + r.w, 0) || 1
+  const weighted = rawW
+    .map((r) => ({ ...r, pct: (r.w / totW) * 100 }))
+    .sort((a, b) => b.pct - a.pct)
 
-  const posPct = totalCount ? (posCount / totalCount) * 100 : 50
+  const bullW = weighted.filter((r) => r.sig === 1).reduce((s, r) => s + r.pct, 0)
+  const bearW = weighted.filter((r) => r.sig === -1).reduce((s, r) => s + r.pct, 0)
+  const decided = bullW + bearW
+  const posPct = decided ? (bullW / decided) * 100 : 50
+  const topDriver = weighted[0] || null
 
   const sumPosStyle = { width: posPct + "%", background: "var(--green)" }
-  const sumNegStyle = { width: (100 - posPct) + "%", background: "var(--red)" }
+  const sumNegStyle = { width: 100 - posPct + "%", background: "var(--red)" }
 
+  const netW = bullW - bearW
   let overallSignal = "NETRAL"
-  if (posCount > negCount) overallSignal = "KONDUSIF"
-  if (negCount > posCount) overallSignal = "BERISIKO"
+  if (netW > 8) overallSignal = "KONDUSIF"
+  if (netW < -8) overallSignal = "BERISIKO"
+
+  const macroVerdict = {
+    conclusion: overallSignal,
+    bullish_pct: Math.round(posPct),
+    bearish_pct: Math.round(100 - posPct),
+    top_driver: topDriver ? topDriver.label : null,
+    weights: weighted.map((r) => ({ label: r.label, weight: Math.round(r.pct), signal: r.sig })),
+  }
 
   const ovStyle = {
     background: overallSignal === "KONDUSIF" ? "rgba(45,212,160,0.15)" : overallSignal === "BERISIKO" ? "rgba(245,94,94,0.15)" : "rgba(245,183,49,0.15)",
@@ -445,8 +491,24 @@ export default function MakroEkonomi() {
               <div className="sum-seg" style={sumNegStyle} />
             </div>
             <div style={St.sumLabels}>
-              <span style={St.green}>{posCount} indikator Kondusif</span>
-              <span style={St.red}>{negCount} indikator Berisiko</span>
+              <span style={St.green}>Kondusif {Math.round(posPct)}%</span>
+              <span style={St.red}>Berisiko {Math.round(100 - posPct)}%</span>
+            </div>
+            {topDriver ? (
+              <div style={St.wDriver}>
+                Dipimpin oleh <b>{topDriver.label}</b> ({Math.round(topDriver.pct)}% bobot efektif)
+              </div>
+            ) : null}
+            <div style={St.wRows}>
+              {weighted.map((r) => (
+                <div key={r.key} style={St.wRow}>
+                  <span style={St.wLbl}>{r.label}</span>
+                  <div style={St.wTrack}>
+                    <div style={wBarStyle(r)} />
+                  </div>
+                  <span style={St.wPct}>{Math.round(r.pct)}%</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>

@@ -452,6 +452,7 @@ Balas HANYA JSON valid berikut tanpa teks lain (ganti tiap placeholder <...> den
 # 4. MAKRO EKONOMI
 class MacroReq(BaseModel):
     macro_data: dict
+    verdict: Optional[dict] = None
     api_key: Optional[str] = None
 
 @router.post("/macro")
@@ -476,6 +477,25 @@ async def groq_macro(req: MacroReq):
         ff_txt = "Aliran dana asing pasar: " + str(ff.get("status", "?")) + " (net Rp " + format(ff.get("net") or 0, ",.0f") + ")"
     else:
         ff_txt = "Aliran dana asing: tidak tersedia"
+
+    v = req.verdict or {}
+    top_driver = v.get("top_driver", "?")
+    verdict_txt = ""
+    if v:
+        _ws = v.get("weights") or []
+        _wl = "; ".join(
+            str(w.get("label")) + " " + str(w.get("weight")) + "% "
+            + ("(mendukung)" if w.get("signal") == 1 else "(menekan)" if w.get("signal") == -1 else "(netral)")
+            for w in _ws
+        )
+        verdict_txt = (
+            "KESIMPULAN BERBOBOT (dihitung sistem secara deterministik, WAJIB diikuti): "
+            "Verdict " + str(v.get("conclusion", "?")) + " (Kondusif " + str(v.get("bullish_pct", 0))
+            + "% vs Berisiko " + str(v.get("bearish_pct", 0)) + "%). "
+            "Indikator paling dominan: " + str(top_driver) + ". "
+            "Bobot efektif tiap indikator (bobot dasar x seberapa ekstrem gerakannya): " + _wl + "."
+        )
+
     prompt = f"""Kamu analis ekonomi makro Indonesia. Analisis data makro terkini dan dampaknya terhadap pasar saham secara keseluruhan.
 
 DATA MAKRO TERKINI:
@@ -486,8 +506,11 @@ DATA MAKRO TERKINI:
 - Inflasi (YoY): {infl.get('value','?')}% ({infl.get('desc','?')})
 - {ff_txt}
 
+{verdict_txt}
+
 ATURAN WAJIB:
-1. "impact_on_market" tentukan apakah kondisi makro saat ini cenderung Positif, Negatif, atau Netral untuk pasar saham secara keseluruhan.
+1. "impact_on_market" HARUS konsisten dengan KESIMPULAN BERBOBOT di atas (Kondusif -> Positif, Berisiko -> Negatif, Netral -> Netral). Dilarang bertentangan dengan verdict sistem.
+1b. Di "detailed_analysis" WAJIB jelaskan MENGAPA indikator paling dominan ({top_driver}) berbobot paling besar saat ini (karena gerakannya paling ekstrem sehingga pengaruhnya ke pasar paling kuat) dan bagaimana hal itu membentuk kesimpulan.
 2. "detailed_analysis" WAJIB berupa paragraf naratif yang menganalisis kelima data di atas (IHSG, kurs, suku bunga, PDB, dan inflasi) menjadi satu kesatuan cerita mengenai dampaknya terhadap pasar. Khusus IHSG, analisa sebagai TREN (arah pergerakan beberapa waktu terakhir), bukan hanya angka hari ini. Sertakan juga dampak ALIRAN DANA ASING (net buy/sell) terhadap kondisi pasar.
 
 Balas HANYA JSON valid berikut tanpa teks lain (ganti placeholder <...>):

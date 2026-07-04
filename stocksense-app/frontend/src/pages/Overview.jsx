@@ -743,7 +743,24 @@ export default function Overview() {
             </div>
           ) : null}
           {!macroData ? <div className="kpi-detail-note">Menunggu data makro...</div> : null}
-          <div className="kpi-detail-note">Status kondusif atau berisiko ditentukan dari berapa banyak indikator makro yang berdampak positif ke pasar saham.</div>
+          {macroData ? (() => {
+            const mv = macroWeighted(macroData);
+            if (!mv) return null;
+            return (
+              <div className="kpi-detail-grp">
+                <div className="kpi-detail-grp-h">Kesimpulan Berbobot (%)</div>
+                <div className="kpi-stat"><span className="kpi-stat-k">Kondusif</span><span className="kpi-stat-v pos">{Math.round(mv.posPct)}%</span></div>
+                <div className="kpi-stat"><span className="kpi-stat-k">Berisiko</span><span className="kpi-stat-v neg">{Math.round(100 - mv.posPct)}%</span></div>
+                {mv.weighted.map((r) => (
+                  <div className="kpi-stat" key={r.key}>
+                    <span className="kpi-stat-k">{r.label}{r.sig > 0 ? " (mendukung)" : r.sig < 0 ? " (menekan)" : " (netral)"}</span>
+                    <span className={"kpi-stat-v " + (r.sig > 0 ? "pos" : r.sig < 0 ? "neg" : "neu")}>{Math.round(r.pct)}%</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })() : null}
+          <div className="kpi-detail-note">Angka % di atas adalah bobot efektif tiap indikator: bobot dasar (IHSG 25, Dana Asing 20, USD/IDR 20, BI Rate 15, Inflasi 10, PDB 10) dikali seberapa ekstrem gerakannya, lalu dinormalisasi jadi 100%. Status Kondusif/Berisiko dihitung dari selisih total bobot indikator yang mendukung vs menekan pasar.</div>
         </>
       )
     }
@@ -882,21 +899,12 @@ export default function Overview() {
 
           {/* Card 4: Ringkasan Makro Ekonomi */}
           {(() => {
-            let mPos = 0, mNeg = 0;
-            if (macroData) {
-              const _msig = (f) => {
-                if (!macroData[f]) return null;
-                if (f === "IHSG" || f === "USDIDR") return macroData[f].trend ? (macroData[f].trend.signal || 0) : 0;
-                return macroData[f].signal != null ? macroData[f].signal : 0;
-              };
-              ["IHSG", "USDIDR", "BIRate", "Inflation", "GDP", "ForeignFlow"].forEach((f) => {
-                const s = _msig(f);
-                if (s === 1) mPos++; else if (s === -1) mNeg++;
-              });
-            }
-            const macroStatus = macroData ? (mPos > mNeg ? "KONDUSIF" : mNeg > mPos ? "BERISIKO" : "NETRAL") : "Menunggu...";
-            const macroColor = macroData ? (mPos > mNeg ? "var(--green)" : mNeg > mPos ? "var(--red)" : "var(--amber)") : "var(--text-muted)";
-            const macroDesc = macroData ? `Terdapat ${mPos} dari 6 indikator makro ekonomi yang berdampak positif ke pasar saham.` : "—";
+            const mv = macroWeighted(macroData);
+            const macroStatus = mv ? mv.status : "Menunggu...";
+            const macroColor = mv ? mv.color : "var(--text-muted)";
+            const macroDesc = mv
+              ? `Kondusif ${Math.round(mv.posPct)}% · Berisiko ${Math.round(100 - mv.posPct)}%` + (mv.topDriver ? ` · dipimpin ${mv.topDriver.label}` : "")
+              : "—";
 
             return (
               <div className={"kpi-card kpi-c-amber" + (activeKpi === "amber" ? " kpi-active" : "")} style={S.kpiClickable} onClick={() => setActiveKpi(activeKpi === "amber" ? null : "amber")}>
@@ -1117,6 +1125,41 @@ function renderIndicators(d) {
       </div>
     )
   })
+}
+
+function macroWeighted(d) {
+  if (!d) return null
+  const BASE_W = { IHSG: 25, ForeignFlow: 20, USDIDR: 20, BIRate: 15, Inflation: 10, GDP: 10 }
+  const LABEL = { IHSG: "IHSG", USDIDR: "USD/IDR", BIRate: "BI Rate", Inflation: "Inflasi", GDP: "PDB", ForeignFlow: "Dana Asing" }
+  const magMult = (x, ref) => Math.max(Math.min(Math.abs(Number(x) || 0) / ref, 2), 0.5)
+  const MAG = {
+    IHSG: magMult(d.IHSG && d.IHSG.trend ? d.IHSG.trend.month_pct : 0, 3),
+    USDIDR: magMult(d.USDIDR && d.USDIDR.trend ? d.USDIDR.trend.month_pct : 0, 2),
+    BIRate: magMult(d.BIRate ? d.BIRate.change : 0, 0.5),
+    Inflation: magMult(d.Inflation ? d.Inflation.change : 0, 0.5),
+    GDP: magMult(d.GDP ? d.GDP.change : 0, 0.3),
+    ForeignFlow: magMult(d.ForeignFlow ? (d.ForeignFlow.net || 0) / 1e12 : 0, 2),
+  }
+  const sigOf = (f) => {
+    if (!d[f]) return 0
+    if (f === "IHSG" || f === "USDIDR") return d[f].trend ? d[f].trend.signal || 0 : 0
+    return d[f].signal != null ? d[f].signal : 0
+  }
+  const KEYS = ["IHSG", "USDIDR", "BIRate", "Inflation", "GDP", "ForeignFlow"]
+  const rawW = KEYS.map((k) => ({ key: k, label: LABEL[k], sig: sigOf(k), w: BASE_W[k] * MAG[k] }))
+  const totW = rawW.reduce((acc, r) => acc + r.w, 0) || 1
+  const weighted = rawW.map((r) => ({ ...r, pct: (r.w / totW) * 100 })).sort((a, b) => b.pct - a.pct)
+  const bullW = weighted.filter((r) => r.sig === 1).reduce((acc, r) => acc + r.pct, 0)
+  const bearW = weighted.filter((r) => r.sig === -1).reduce((acc, r) => acc + r.pct, 0)
+  const decided = bullW + bearW
+  const posPct = decided ? (bullW / decided) * 100 : 50
+  const topDriver = weighted[0] || null
+  const netW = bullW - bearW
+  let status = "NETRAL"
+  if (netW > 8) status = "KONDUSIF"
+  if (netW < -8) status = "BERISIKO"
+  const color = status === "KONDUSIF" ? "var(--green)" : status === "BERISIKO" ? "var(--red)" : "var(--amber)"
+  return { status, color, posPct, negPct: 100 - posPct, bullW, bearW, netW, topDriver, weighted }
 }
 
 function renderMacroCards(d) {
