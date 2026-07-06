@@ -29,6 +29,8 @@ export const api = {
   getIndicators: (t, refresh = false) => getJSON(`/stocks/${t}/indicators` + (refresh ? "?refresh=true" : "")),
   getStockForeignFlow: (t) => getJSON(`/stocks/${t}/foreign-flow`),
   getPrediction: (t) => getJSON(`/prediction/${t}`),
+  savePredictionHistory: (payload) => postJSON("/prediction-history/save", payload),
+  getPredictionHistory: (t, limit = 30) => getJSON(`/prediction-history/${t}?limit=${limit}`),
   getNews: (t, perSource = 50) => getJSON(`/news/${t}?per_source=${perSource}`),
   predictSentiment: (ticker, articles) =>
     postJSON("/sentiment/predict", { ticker, articles }),

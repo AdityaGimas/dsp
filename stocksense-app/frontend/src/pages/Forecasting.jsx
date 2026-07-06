@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { Fragment, useEffect, useMemo, useRef, useState } from "react"
 import { Line } from "react-chartjs-2"
 import { useApp } from "../context/AppContext.jsx"
 import { api } from "../api/client.js"
@@ -32,7 +32,7 @@ function mockXGB(lastClose) {
       confidence: parseFloat((0.88 - i * 0.04).toFixed(2)),
     })
   }
-  return { model_name: "XGBoost", model_accuracy: 72.5, predictions: preds, recommendation: "HOLD", confidence: 0.72 }
+  return { model_name: "XGBoost", model_accuracy: 72.5, predictions: preds, recommendation: "HOLD", confidence: 0.72, _mock: true }
 }
 
 function mockLLM(lastClose) {
@@ -54,6 +54,7 @@ function mockLLM(lastClose) {
     confidence: 0.78,
     reasons: ["RSI menunjukkan momentum netral", "Volume dalam rentang normal", "Trend jangka pendek belum jelas"],
     summary: "Saham dalam konsolidasi. Tunggu konfirmasi arah sebelum masuk posisi.",
+    _mock: true,
   }
 }
 
@@ -123,6 +124,9 @@ export default function Forecasting() {
   const [busy, setBusy] = useState(false)
   const [activeModel, setActiveModel] = useState("both") // "xgb" | "llm" | "both"
   const [histPeriod, setHistPeriod] = useState("3mo")
+  const [predHistory, setPredHistory] = useState(null)
+  const [histLoading, setHistLoading] = useState(false)
+  const savedRef = useRef("")
 
   const HIST_PERIODS = [
     { id: "1mo", lbl: "1B" },
@@ -355,6 +359,54 @@ export default function Forecasting() {
         { date: xgbPreds[2]?.date, price: llmPred.day3_price, low: llmPred.day3_low, high: llmPred.day3_high },
       ]
     : []
+
+  // Riwayat & akurasi prediksi
+  const loadHistory = () => {
+    setHistLoading(true)
+    api.getPredictionHistory(currentTicker, 30)
+      .then((d) => setPredHistory(d))
+      .catch(() => setPredHistory(null))
+      .finally(() => setHistLoading(false))
+  }
+
+  useEffect(() => {
+    setPredHistory(null)
+    savedRef.current = ""
+    loadHistory()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTicker])
+
+  // Auto-simpan begitu prediksi XGBoost & LLM (asli, bukan mock) siap.
+  useEffect(() => {
+    if (!xgbPred || !llmPred) return
+    if (xgbPred._mock || llmPred._mock) return
+    if (!lastClose) return
+    const key = currentTicker + ":" + (xgbPreds[0]?.date || "")
+    if (savedRef.current === key) return
+    savedRef.current = key
+
+    const payload = {
+      ticker: currentTicker,
+      base_price: lastClose,
+      xgb: {
+        recommendation: xgbPred.recommendation,
+        confidence: xgbPred.confidence,
+        model_accuracy: xgbPred.model_accuracy,
+        points: xgbPreds.slice(0, 3).map((pt, i) => ({
+          horizon: i + 1, date: pt.date, price: pt.price, low: pt.price_low, high: pt.price_high,
+        })),
+      },
+      llm: {
+        recommendation: llmPred.recommendation,
+        confidence: llmPred.confidence,
+        points: llmDays.map((pt, i) => ({
+          horizon: i + 1, date: pt.date, price: pt.price, low: pt.low, high: pt.high,
+        })),
+      },
+    }
+    api.savePredictionHistory(payload).then(() => loadHistory()).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [xgbPred, llmPred, lastClose])
 
   return (
     <>
@@ -595,6 +647,9 @@ export default function Forecasting() {
             </div>
           </div>
         </div>
+
+        {/* Riwayat & Akurasi Prediksi */}
+        <PredictionHistory data={predHistory} loading={histLoading} onRefresh={loadHistory} />
       </div>
     </>
   )
@@ -775,5 +830,112 @@ function ScenarioTable({ xgb, llm, lastClose }) {
         </tr>
       </tbody>
     </table>
+  )
+}
+
+// ── Riwayat & Akurasi Prediksi ────────────────────────
+function AccCard({ title, acc, color }) {
+  const a = acc || {}
+  const hasData = a.count > 0
+  return (
+    <div className={"fh-card fh-" + color}>
+      <div className="fh-label">{title} — Akurasi</div>
+      <div className="fh-val fc-hist-accval">{hasData && a.accuracy != null ? a.accuracy.toFixed(1) + "%" : "—"}</div>
+      <div className="fh-sub">{hasData ? `MAPE ${a.mape}% · ${a.count} titik dievaluasi` : "Belum ada data aktual untuk dievaluasi"}</div>
+      <div className={"fh-badge fh-badge-" + (color === "green" ? "green" : "amber")}>
+        {hasData && a.direction_hit_rate != null ? `Arah benar ${a.direction_hit_rate}%` : "Menunggu evaluasi"}
+      </div>
+    </div>
+  )
+}
+
+function HistRow({ date, model, pt }) {
+  const d = date ? new Date(date) : null
+  const td = pt.target_date ? new Date(pt.target_date) : null
+  const hasActual = pt.actual_price != null
+  const err = pt.error_pct
+  const errCls = err == null ? "" : Math.abs(err) <= 2 ? "chg-pos" : "chg-neg"
+  return (
+    <tr>
+      <td>{d ? `${d.getDate()} ${MON_ID[d.getMonth()]}` : "—"}</td>
+      <td><span className={"model-pill " + (model === "XGBoost" ? "model-pill-xgb" : "model-pill-llm")}>{model}</span></td>
+      <td>{td ? `H+${pt.horizon} · ${td.getDate()} ${MON_ID[td.getMonth()]}` : `H+${pt.horizon}`}</td>
+      <td>Rp {fmt(pt.predicted_price)}</td>
+      <td>{hasActual ? "Rp " + fmt(pt.actual_price) : <span className="fc-hist-muted">menunggu</span>}</td>
+      <td>{err == null ? "—" : <span className={errCls}>{(err >= 0 ? "+" : "") + err.toFixed(2)}%</span>}</td>
+      <td>{pt.direction_hit == null ? "—" : pt.direction_hit ? <span className="chg-pos">✓</span> : <span className="chg-neg">✗</span>}</td>
+    </tr>
+  )
+}
+
+function PredictionHistory({ data, loading, onRefresh }) {
+  const history = data?.history || []
+  const acc = data?.accuracy || {}
+
+  const rows = history.map((h) => ({
+    target_date: h.target_date,
+    xp: h.xgb,
+    lp: h.llm,
+  }))
+  const pending = history.filter(
+    (h) => (!h.xgb || h.xgb.actual_price == null) && (!h.llm || h.llm.actual_price == null)
+  )
+
+  return (
+    <div className="card">
+      <div className="card-header">
+        <div className="card-title">📂 Riwayat & Akurasi Prediksi</div>
+        <button className={"fetch-news-btn " + (loading ? "loading" : "")} onClick={onRefresh} disabled={loading}>
+          <span className="spin-sm" />
+          <span className="btn-txt">{loading ? "Memuat..." : "↻ Muat Ulang"}</span>
+        </button>
+      </div>
+      <div className="card-body">
+        <div className="fc-hist-acc">
+          <AccCard title="⚡ XGBoost" acc={acc.xgb} color="green" />
+          <AccCard title="✦ LLM (Groq)" acc={acc.llm} color="purple" />
+        </div>
+
+        {history.length === 0 ? (
+          <div className="fc-hist-empty">
+            {loading ? "Memuat riwayat..." : "Belum ada riwayat prediksi tersimpan. Prediksi akan otomatis disimpan setiap kali dibuat."}
+          </div>
+        ) : (
+          <>
+            <div className="fc-hist-caption">
+              Prediksi pertama untuk tiap tanggal (dibuat beberapa hari sebelumnya) vs harga aktual
+            </div>
+            <div className="fc-hist-table-wrap">
+              <table className="scen-table fc-hist-table">
+                <thead>
+                  <tr>
+                    <th>Dibuat</th>
+                    <th>Model</th>
+                    <th>Target</th>
+                    <th>Prediksi</th>
+                    <th>Aktual</th>
+                    <th>Selisih</th>
+                    <th>Arah</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <Fragment key={r.target_date}>
+                      {r.xp && <HistRow date={r.xp.pred_date} model="XGBoost" pt={r.xp} />}
+                      {r.lp && <HistRow date={r.lp.pred_date} model="LLM" pt={r.lp} />}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {pending.length > 0 && (
+              <div className="fc-hist-pending">
+                {pending.length} prediksi menunggu harga aktual (target belum tiba / hari libur bursa).
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   )
 }

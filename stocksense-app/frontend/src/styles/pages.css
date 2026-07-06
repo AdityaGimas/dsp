@@ -2078,3 +2078,47 @@
     color: var(--text-muted)
 }
 .mh-teal::before { background: var(--teal); }
+
+/* ── Riwayat & Akurasi Prediksi ── */
+.fc-hist-acc {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.fc-hist-table-wrap {
+  overflow-x: auto;
+  margin-top: 4px;
+}
+.fc-hist-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.fc-hist-table th {
+  text-align: left;
+  padding: 8px 10px;
+  color: var(--text-muted);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.fc-hist-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.fc-hist-table tbody tr:last-child td {
+  border-bottom: none;
+}
+@media (max-width: 720px) {
+  .fc-hist-acc {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Riwayat & Akurasi Prediksi - helper classes */
+.fc-hist-accval { font-size: 26px; }
+.fc-hist-muted { color: var(--text-muted); }
+.fc-hist-empty { padding: 18px 0; text-align: center; color: var(--text-muted); font-size: 12px; }
+.fc-hist-caption { font-size: 11px; color: var(--text-muted); margin: 14px 0 6px; }
+.fc-hist-pending { font-size: 11px; color: var(--text-muted); margin-top: 12px; }

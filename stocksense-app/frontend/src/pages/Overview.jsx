@@ -206,6 +206,46 @@ export default function Overview() {
     }
   }, [currentTicker, period])
 
+  // Auto-simpan prediksi hari ini ke riwayat (agar DB sinkron dgn yang tampil).
+  // Backend akan overwrite kalau dibuat hari ini, dan keep-first utk hari lalu.
+  const predSavedRef = useRef("")
+  useEffect(() => {
+    if (!mlPred || !mlPred.predictions?.length) return
+    const xpts = mlPred.predictions.slice(0, 3)
+    const baseClose = hist.length ? hist[hist.length - 1].close : info?.current_price || 0
+    if (!baseClose) return
+
+    const payload = {
+      ticker: currentTicker,
+      base_price: baseClose,
+      xgb: {
+        recommendation: mlPred.recommendation,
+        confidence: mlPred.confidence,
+        model_accuracy: mlPred.model_accuracy,
+        points: xpts.map((p, i) => ({
+          horizon: i + 1, date: p.date, price: p.price, low: p.price_low, high: p.price_high,
+        })),
+      },
+    }
+    if (groqTech) {
+      const lp = [groqTech.price_tomorrow, groqTech.day2_price, groqTech.day3_price]
+      const ll = [groqTech.price_tomorrow_low, groqTech.day2_low, groqTech.day3_low]
+      const lh = [groqTech.price_tomorrow_high, groqTech.day2_high, groqTech.day3_high]
+      payload.llm = {
+        recommendation: groqTech.recommendation,
+        confidence: groqTech.confidence,
+        points: xpts
+          .map((p, i) => ({ horizon: i + 1, date: p.date, price: lp[i], low: ll[i], high: lh[i] }))
+          .filter((pt) => pt.price != null),
+      }
+    }
+    const sig = JSON.stringify(payload)
+    if (predSavedRef.current === sig) return
+    predSavedRef.current = sig
+    api.savePredictionHistory(payload).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mlPred, groqTech, hist, info, currentTicker])
+
   // Refresh manual: ambil ulang data pasar inti (info, indikator, prediksi,
   // chart, makro) dengan menembus cache server (refresh=true).
   function refreshAll() {

@@ -1,0 +1,5 @@
+# Data lokal (SQLite riwayat prediksi)
+data/
+*.db
+*.sqlite
+*.sqlite3
