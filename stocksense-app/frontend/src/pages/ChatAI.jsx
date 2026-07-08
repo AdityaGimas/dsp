@@ -15,7 +15,7 @@ const TIMEFRAMES = [
 
 const MODES = [
   { key: "general",   label: "🔍 Umum",     desc: "Analisis holistik: teknikal + fundamental + makro" },
-  { key: "technical", label: "📊 Teknikal", desc: "RSI, MACD, support/resistance, setup trading" },
+  { key: "technical", label: "⚡ Teknikal", desc: "RSI, MACD, support/resistance, setup trading" },
   { key: "news",      label: "📰 Berita",   desc: "Sentimen, katalis, berita emiten" },
   { key: "macro",     label: "🌍 Makro",    desc: "Suku bunga, inflasi, Rupiah, komoditas" },
 ]

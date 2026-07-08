@@ -5,9 +5,9 @@ import { useApp } from "../context/AppContext.jsx"
 const NAV = [
   { to: "/", icon: "◉", label: "Overview", end: true },
   { to: "/forecasting", icon: "⌬", label: "Forecasting" },
-  { to: "/berita", icon: "❚❚", label: "Berita & Sentimen" },
+  { to: "/berita", icon: "📰", label: "Berita & Sentimen" },
   { to: "/indikator", icon: "⚡", label: "Indikator Teknikal" },
-  { to: "/makro", icon: "📊", label: "Makro Ekonomi" },
+  { to: "/makro", icon: "🌍", label: "Makro Ekonomi" },
   { to: "/chat", icon: "💬", label: "Chat AI" },
 ]
 
