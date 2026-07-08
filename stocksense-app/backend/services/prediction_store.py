@@ -1,7 +1,7 @@
 """
 prediction_store.py — penyimpanan hasil prediksi harga ke SQLite.
 
-Model penyimpanan: KEEP-FIRST per tanggal target, KECUALI data HARI INI.
+Model penyimpanan: KEEP-FIRST penuh per (ticker, model, tanggal target).
 - Untuk tiap (ticker, model, tanggal_target), prediksi yang dibuat pada hari
   SEBELUMNYA tidak pernah ditimpa (keep-first) — supaya jejak prediksi jauh-hari
   tetap utuh.
@@ -102,7 +102,7 @@ def _today():
 
 
 def save_prediction(ticker, base_price, xgb, llm, pred_date=None):
-    """Simpan prediksi: overwrite utk data hari ini, keep-first utk hari sebelumnya.
+    """Simpan prediksi dengan KEEP-FIRST penuh (nilai yang sudah ada tak ditimpa).
 
     - Tanggal target yang tersimpan dari hari SEBELUMNYA tidak ditimpa.
     - Tanggal target yang tersimpan HARI INI di-overwrite dengan nilai terbaru.
@@ -152,22 +152,9 @@ def save_prediction(ticker, base_price, xgb, llm, pred_date=None):
                         (ticker, model, td),
                     ).fetchone()
                     if row is not None:
-                        # Sudah ada. Overwrite HANYA jika dibuat hari ini (pred_date sama).
-                        # Kalau dibuat hari sebelumnya -> keep-first, jangan diubah.
-                        if row["pred_date"] == pred_date:
-                            conn.execute(
-                                """
-                                UPDATE prediction_points SET
-                                    horizon=?, base_price=?, predicted_price=?,
-                                    predicted_low=?, predicted_high=?
-                                WHERE ticker=? AND model=? AND target_date=?
-                                """,
-                                (
-                                    pt.get("horizon"), base_price, pt.get("price"),
-                                    pt.get("low"), pt.get("high"), ticker, model, td,
-                                ),
-                            )
-                            updated += 1
+                        # KEEP-FIRST penuh: begitu (ticker, model, target_date) tersimpan,
+                        # nilainya TIDAK pernah ditimpa lagi (termasuk oleh run hari ini).
+                        # Prediksi hanya digenerate untuk tanggal target yang BELUM ada.
                         continue
                     conn.execute(
                         """

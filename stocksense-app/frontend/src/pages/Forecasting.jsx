@@ -119,14 +119,63 @@ export default function Forecasting() {
   const code = currentTicker.replace(".JK", "")
 
   const [hist, setHist] = useState([])
-  const [xgbPred, setXgbPred] = useState(null)
-  const [llmPred, setLlmPred] = useState(null)
+  const [xgbPredRaw, setXgbPredRaw] = useState(null)
+  const [llmPredRaw, setLlmPredRaw] = useState(null)
   const [busy, setBusy] = useState(false)
   const [activeModel, setActiveModel] = useState("both") // "xgb" | "llm" | "both"
   const [histPeriod, setHistPeriod] = useState("3mo")
   const [predHistory, setPredHistory] = useState(null)
   const [histLoading, setHistLoading] = useState(false)
   const savedRef = useRef("")
+
+  // Prediksi DB-first: tiap tanggal target yang sudah ada di database dipakai dari
+  // DB (stabil); hanya tanggal yang belum ada yang memakai hasil generate baru.
+  const xgbPred = useMemo(() => {
+    if (!xgbPredRaw || !xgbPredRaw.predictions) return xgbPredRaw
+    const dbMap = {}
+    ;((predHistory && predHistory.history) || []).forEach((h) => {
+      if (h && h.xgb && h.xgb.predicted_price != null) dbMap[h.target_date] = h.xgb
+    })
+    return {
+      ...xgbPredRaw,
+      predictions: xgbPredRaw.predictions.map((p) => {
+        const db = dbMap[p.date]
+        if (!db) return p
+        return {
+          ...p,
+          price: db.predicted_price,
+          price_low: db.predicted_low != null ? db.predicted_low : p.price_low,
+          price_high: db.predicted_high != null ? db.predicted_high : p.price_high,
+        }
+      }),
+    }
+  }, [xgbPredRaw, predHistory])
+
+  const llmPred = useMemo(() => {
+    if (!llmPredRaw) return llmPredRaw
+    const dts = (xgbPredRaw?.predictions || []).slice(0, 3).map((p) => p.date)
+    const dbMap = {}
+    ;((predHistory && predHistory.history) || []).forEach((h) => {
+      if (h && h.llm && h.llm.predicted_price != null) dbMap[h.target_date] = h.llm
+    })
+    const a = dbMap[dts[0]]
+    const b = dbMap[dts[1]]
+    const c = dbMap[dts[2]]
+    if (!a && !b && !c) return llmPredRaw
+    const pick = (dbVal, cur) => (dbVal != null ? dbVal : cur)
+    return {
+      ...llmPredRaw,
+      price_tomorrow: pick(a?.predicted_price, llmPredRaw.price_tomorrow),
+      price_tomorrow_low: pick(a?.predicted_low, llmPredRaw.price_tomorrow_low),
+      price_tomorrow_high: pick(a?.predicted_high, llmPredRaw.price_tomorrow_high),
+      day2_price: pick(b?.predicted_price, llmPredRaw.day2_price),
+      day2_low: pick(b?.predicted_low, llmPredRaw.day2_low),
+      day2_high: pick(b?.predicted_high, llmPredRaw.day2_high),
+      day3_price: pick(c?.predicted_price, llmPredRaw.day3_price),
+      day3_low: pick(c?.predicted_low, llmPredRaw.day3_low),
+      day3_high: pick(c?.predicted_high, llmPredRaw.day3_high),
+    }
+  }, [llmPredRaw, xgbPredRaw, predHistory])
 
   const HIST_PERIODS = [
     { id: "1mo", lbl: "1B" },
@@ -138,8 +187,8 @@ export default function Forecasting() {
   useEffect(() => {
     let alive = true
     setBusy(true)
-    setXgbPred(null)
-    setLlmPred(null)
+    setXgbPredRaw(null)
+    setLlmPredRaw(null)
 
     Promise.allSettled([
       api.getHistory(currentTicker, histPeriod),
@@ -150,7 +199,7 @@ export default function Forecasting() {
       const lastClose = hd.length ? hd[hd.length - 1].close : 9400
       const pd = p.status === "fulfilled" && p.value.predictions?.length ? p.value : mockXGB(lastClose)
       setHist(hd)
-      setXgbPred(pd)
+      setXgbPredRaw(pd)
       setBusy(false)
     })
 
@@ -173,9 +222,9 @@ export default function Forecasting() {
       })
     }).then((data) => {
       if (!alive) return
-      if (data) setLlmPred(data)
+      if (data) setLlmPredRaw(data)
     }).catch(() => {
-      if (alive) setLlmPred(mockLLM(hist.length ? hist[hist.length - 1].close : 9400))
+      if (alive) setLlmPredRaw(mockLLM(hist.length ? hist[hist.length - 1].close : 9400))
     })
 
     return () => { alive = false }
@@ -193,6 +242,16 @@ export default function Forecasting() {
     const histLabels = hist.map((r) => r.date.slice(5))
     const closes = hist.map((r) => r.close)
 
+    // Peta prediksi MASA LALU dari database (key = tanggal penuh YYYY-MM-DD)
+    const xgbPastMap = {}
+    const llmPastMap = {}
+    ;(predHistory?.history || []).forEach((h) => {
+      if (h && h.xgb && h.xgb.predicted_price != null) xgbPastMap[h.target_date] = h.xgb.predicted_price
+      if (h && h.llm && h.llm.predicted_price != null) llmPastMap[h.target_date] = h.llm.predicted_price
+    })
+    const hasXgbPast = Object.keys(xgbPastMap).length > 0
+    const hasLlmPast = Object.keys(llmPastMap).length > 0
+
     // Determine prediction dates & labels
     const xDays = nextTradingDays(3)
     const predLabels = xDays.map((d) => `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`)
@@ -206,6 +265,18 @@ export default function Forecasting() {
       if (val !== undefined) arr[histLen + idx] = val
       return arr
     }
+
+    // Isi nilai prediksi masa lalu (dari DB) ke posisi tanggal yang sesuai.
+    const fillPast = (arr, pastMap) => {
+      hist.forEach((r, i) => {
+        if (pastMap[r.date] != null) arr[i] = pastMap[r.date]
+      })
+    }
+    // Lingkaran di tiap titik prediksi (masa lalu & masa depan); 0 di titik kosong.
+    const predRadius = (lineData, futureCount, hasTodayPast) =>
+      lineData.map((v, idx) =>
+        idx >= histLen ? 5 : idx === histLen - 1 ? (hasTodayPast ? 5 : futureCount ? 4 : 0) : v != null ? 5 : 0
+      )
 
     const datasets = [
       {
@@ -228,77 +299,69 @@ export default function Forecasting() {
     ]
 
     // XGBoost line + band
-    if (xgbPreds.length && (activeModel === "xgb" || activeModel === "both")) {
+    if ((xgbPreds.length || hasXgbPast) && (activeModel === "xgb" || activeModel === "both")) {
       const xgbLine = Array(labels.length).fill(null)
-      xgbLine[histLen - 1] = lastClose
+      fillPast(xgbLine, xgbPastMap)
+      if (histLen > 0 && xgbLine[histLen - 1] == null) xgbLine[histLen - 1] = lastClose
       xgbPreds.forEach((p, i) => { xgbLine[histLen + i] = p.price })
 
-      datasets.push({
+      const ds = {
         label: "XGBoost",
         data: xgbLine,
         borderColor: "#2dd4a0",
         borderWidth: 2,
         borderDash: [5, 3],
-        pointRadius: [
-          ...Array(histLen - 1).fill(0),
-          4,
-          ...xgbPreds.map(() => 5),
-        ],
+        pointRadius: predRadius(xgbLine, xgbPreds.length, xgbPastMap[hist[histLen - 1]?.date] != null),
         pointBackgroundColor: "#2dd4a0",
         tension: 0.3,
         fill: false,
-        _isXgbBand: true,
-        _bandData: xgbPreds.map((p, i) => ({
+        spanGaps: true,
+      }
+      if (xgbPreds.length) {
+        ds._isXgbBand = true
+        ds._bandData = xgbPreds.map((p, i) => ({
           x: predLabels[i],
           low: p.price_low,
           high: p.price_high,
-        })),
-      })
+        }))
+      }
+      datasets.push(ds)
     }
 
     // LLM line + band
-    if (llmPred && (activeModel === "llm" || activeModel === "both")) {
-      const llmDayPrices = [
-        llmPred.price_tomorrow,
-        llmPred.day2_price,
-        llmPred.day3_price,
-      ].filter(Boolean)
-      const llmDayLow = [
-        llmPred.price_tomorrow_low,
-        llmPred.day2_low,
-        llmPred.day3_low,
-      ]
-      const llmDayHigh = [
-        llmPred.price_tomorrow_high,
-        llmPred.day2_high,
-        llmPred.day3_high,
-      ]
+    if ((llmPred || hasLlmPast) && (activeModel === "llm" || activeModel === "both")) {
+      const llmDayPrices = llmPred
+        ? [llmPred.price_tomorrow, llmPred.day2_price, llmPred.day3_price].filter(Boolean)
+        : []
+      const llmDayLow = [llmPred?.price_tomorrow_low, llmPred?.day2_low, llmPred?.day3_low]
+      const llmDayHigh = [llmPred?.price_tomorrow_high, llmPred?.day2_high, llmPred?.day3_high]
 
       const llmLine = Array(labels.length).fill(null)
-      llmLine[histLen - 1] = lastClose
+      fillPast(llmLine, llmPastMap)
+      if (histLen > 0 && llmLine[histLen - 1] == null) llmLine[histLen - 1] = lastClose
       llmDayPrices.forEach((p, i) => { llmLine[histLen + i] = p })
 
-      datasets.push({
+      const ds = {
         label: "LLM",
         data: llmLine,
         borderColor: "#a78bfa",
         borderWidth: 2,
         borderDash: [5, 3],
-        pointRadius: [
-          ...Array(histLen - 1).fill(0),
-          4,
-          ...llmDayPrices.map(() => 5),
-        ],
+        pointRadius: predRadius(llmLine, llmDayPrices.length, llmPastMap[hist[histLen - 1]?.date] != null),
         pointBackgroundColor: "#a78bfa",
         tension: 0.3,
         fill: false,
-        _isLlmBand: true,
-        _bandData: llmDayPrices.map((_, i) => ({
+        spanGaps: true,
+      }
+      if (llmDayPrices.length) {
+        ds._isLlmBand = true
+        ds._bandData = llmDayPrices.map((_, i) => ({
           x: predLabels[i],
           low: llmDayLow[i] ?? lastClose * 0.97,
           high: llmDayHigh[i] ?? lastClose * 1.03,
-        })),
-      })
+        }))
+      }
+      datasets.push(ds)
     }
 
     const opts = {
@@ -349,7 +412,7 @@ export default function Forecasting() {
     }
 
     return { chartData: { labels, datasets }, chartOptions: opts }
-  }, [hist, xgbPreds, llmPred, activeModel, histPeriod])
+  }, [hist, xgbPreds, llmPred, activeModel, histPeriod, predHistory])
 
   // LLM days array
   const llmDays = llmPred
@@ -363,7 +426,7 @@ export default function Forecasting() {
   // Riwayat & akurasi prediksi
   const loadHistory = () => {
     setHistLoading(true)
-    api.getPredictionHistory(currentTicker, 30)
+    api.getPredictionHistory(currentTicker, 400)
       .then((d) => setPredHistory(d))
       .catch(() => setPredHistory(null))
       .finally(() => setHistLoading(false))
@@ -420,14 +483,14 @@ export default function Forecasting() {
           className={"fetch-news-btn " + (busy ? "loading" : "")}
           disabled={busy}
           onClick={() => {
-            setXgbPred(null); setLlmPred(null)
+            setXgbPredRaw(null); setLlmPredRaw(null)
             setBusy(true)
             Promise.allSettled([api.getHistory(currentTicker, histPeriod, true), api.getPrediction(currentTicker)])
               .then(([h, p]) => {
                 const hd = h.status === "fulfilled" && h.value.data?.length ? h.value.data : mockHistory(3)
                 const lastC = hd.length ? hd[hd.length - 1].close : 9400
                 const pd = p.status === "fulfilled" && p.value.predictions?.length ? p.value : mockXGB(lastC)
-                setHist(hd); setXgbPred(pd); setBusy(false)
+                setHist(hd); setXgbPredRaw(pd); setBusy(false)
               })
           }}
         >
@@ -857,9 +920,9 @@ function HistRow({ date, model, pt }) {
   const errCls = err == null ? "" : Math.abs(err) <= 2 ? "chg-pos" : "chg-neg"
   return (
     <tr>
-      <td>{d ? `${d.getDate()} ${MON_ID[d.getMonth()]}` : "—"}</td>
+      <td>{td ? `${td.getDate()} ${MON_ID[td.getMonth()]}` : "—"}</td>
       <td><span className={"model-pill " + (model === "XGBoost" ? "model-pill-xgb" : "model-pill-llm")}>{model}</span></td>
-      <td>{td ? `H+${pt.horizon} · ${td.getDate()} ${MON_ID[td.getMonth()]}` : `H+${pt.horizon}`}</td>
+      <td>{d ? `${d.getDate()} ${MON_ID[d.getMonth()]}` : "—"}</td>
       <td>Rp {fmt(pt.predicted_price)}</td>
       <td>{hasActual ? "Rp " + fmt(pt.actual_price) : <span className="fc-hist-muted">menunggu</span>}</td>
       <td>{err == null ? "—" : <span className={errCls}>{(err >= 0 ? "+" : "") + err.toFixed(2)}%</span>}</td>
@@ -871,6 +934,7 @@ function HistRow({ date, model, pt }) {
 function PredictionHistory({ data, loading, onRefresh }) {
   const history = data?.history || []
   const acc = data?.accuracy || {}
+  const [modelFilter, setModelFilter] = useState("all") // "all" | "XGBoost" | "LLM"
 
   const rows = history.map((h) => ({
     target_date: h.target_date,
@@ -905,13 +969,31 @@ function PredictionHistory({ data, loading, onRefresh }) {
             <div className="fc-hist-caption">
               Prediksi pertama untuk tiap tanggal (dibuat beberapa hari sebelumnya) vs harga aktual
             </div>
+            <div className="fc-hist-filter">
+              <span className="fc-hist-filter-label">Filter model:</span>
+              <div className="fc-model-toggle">
+                {[
+                  { id: "all", lbl: "Semua" },
+                  { id: "XGBoost", lbl: "XGBoost" },
+                  { id: "LLM", lbl: "LLM" },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    className={"fc-mtog " + (modelFilter === m.id ? "fc-mtog-active" : "")}
+                    onClick={() => setModelFilter(m.id)}
+                  >
+                    {m.lbl}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="fc-hist-table-wrap">
               <table className="scen-table fc-hist-table">
                 <thead>
                   <tr>
-                    <th>Dibuat</th>
-                    <th>Model</th>
                     <th>Target</th>
+                    <th>Model</th>
+                    <th>Dibuat</th>
                     <th>Prediksi</th>
                     <th>Aktual</th>
                     <th>Selisih</th>
@@ -921,8 +1003,8 @@ function PredictionHistory({ data, loading, onRefresh }) {
                 <tbody>
                   {rows.map((r) => (
                     <Fragment key={r.target_date}>
-                      {r.xp && <HistRow date={r.xp.pred_date} model="XGBoost" pt={r.xp} />}
-                      {r.lp && <HistRow date={r.lp.pred_date} model="LLM" pt={r.lp} />}
+                      {r.xp && (modelFilter === "all" || modelFilter === "XGBoost") && <HistRow date={r.xp.pred_date} model="XGBoost" pt={r.xp} />}
+                      {r.lp && (modelFilter === "all" || modelFilter === "LLM") && <HistRow date={r.lp.pred_date} model="LLM" pt={r.lp} />}
                     </Fragment>
                   ))}
                 </tbody>

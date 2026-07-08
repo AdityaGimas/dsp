@@ -118,8 +118,9 @@ export default function Overview() {
   const [maPeriods, setMaPeriods] = useState([])
   const [volumeMaPeriod, setVolumeMaPeriod] = useState(20)
   const [indicators, setIndicators] = useState(null)
-  const [mlPred, setMlPred] = useState(null)
-  const [groqTech, setGroqTech] = useState(null)
+  const [mlPredRaw, setMlPredRaw] = useState(null)
+  const [predHist, setPredHist] = useState(null)
+  const [groqTechRaw, setGroqTechRaw] = useState(null)
   const [sentModel, setSentModel] = useState("compare")
   const [macroData, setMacroData] = useState(null)
   const [finalReco, setFinalReco] = useState(null)
@@ -130,6 +131,56 @@ export default function Overview() {
   const [groqTechBusy, setGroqTechBusy] = useState(false)
   const [groqTechErr, setGroqTechErr] = useState("")
   const [groqTechTs, setGroqTechTs] = useState(null)
+
+  // Prediksi DB-first: untuk tiap tanggal target yang sudah ada di database, pakai
+  // nilai dari DB (stabil & konsisten dgn yang tersimpan); hanya tanggal yang belum
+  // ada di DB yang memakai hasil generate baru. Berlaku utk XGBoost & LLM.
+  const mlPred = useMemo(() => {
+    if (!mlPredRaw || !mlPredRaw.predictions) return mlPredRaw
+    const dbMap = {}
+    ;(predHist || []).forEach((h) => {
+      if (h && h.xgb && h.xgb.predicted_price != null) dbMap[h.target_date] = h.xgb
+    })
+    return {
+      ...mlPredRaw,
+      predictions: mlPredRaw.predictions.map((p) => {
+        const db = dbMap[p.date]
+        if (!db) return p
+        return {
+          ...p,
+          price: db.predicted_price,
+          price_low: db.predicted_low != null ? db.predicted_low : p.price_low,
+          price_high: db.predicted_high != null ? db.predicted_high : p.price_high,
+        }
+      }),
+    }
+  }, [mlPredRaw, predHist])
+
+  const groqTech = useMemo(() => {
+    if (!groqTechRaw) return groqTechRaw
+    const dts = (mlPredRaw?.predictions || []).slice(0, 3).map((p) => p.date)
+    const dbMap = {}
+    ;(predHist || []).forEach((h) => {
+      if (h && h.llm && h.llm.predicted_price != null) dbMap[h.target_date] = h.llm
+    })
+    const a = dbMap[dts[0]]
+    const b = dbMap[dts[1]]
+    const c = dbMap[dts[2]]
+    if (!a && !b && !c) return groqTechRaw
+    const pick = (dbVal, cur) => (dbVal != null ? dbVal : cur)
+    return {
+      ...groqTechRaw,
+      price_tomorrow: pick(a?.predicted_price, groqTechRaw.price_tomorrow),
+      price_tomorrow_low: pick(a?.predicted_low, groqTechRaw.price_tomorrow_low),
+      price_tomorrow_high: pick(a?.predicted_high, groqTechRaw.price_tomorrow_high),
+      day2_price: pick(b?.predicted_price, groqTechRaw.day2_price),
+      day2_low: pick(b?.predicted_low, groqTechRaw.day2_low),
+      day2_high: pick(b?.predicted_high, groqTechRaw.day2_high),
+      day3_price: pick(c?.predicted_price, groqTechRaw.day3_price),
+      day3_low: pick(c?.predicted_low, groqTechRaw.day3_low),
+      day3_high: pick(c?.predicted_high, groqTechRaw.day3_high),
+    }
+  }, [groqTechRaw, mlPredRaw, predHist])
 
   // ─── News/sentimen dari shared AppContext cache ────────────────────────────
   const nc = newsCache[currentTicker] || {}
@@ -150,14 +201,14 @@ export default function Overview() {
   useEffect(() => {
     let alive = true
     const t = currentTicker
-    setGroqTech(null)
+    setGroqTechRaw(null)
     setGroqTechErr("")
     setGroqTechTs(null)
     setFinalReco(null)
 
     const cache = loadCache(t)
     if (cache?.groqTech) {
-      setGroqTech(cache.groqTech.d)
+      setGroqTechRaw(cache.groqTech.d)
       setGroqTechTs(cache.groqTech.ts)
     }
 
@@ -173,17 +224,17 @@ export default function Overview() {
       .then((d) => alive && setIndicators(d && d.rsi ? d : null))
       .catch(() => alive && setIndicators(null))
 
-    setMlPred(null)
+    setMlPredRaw(null)
     api
       .getPrediction(t)
       .then((d) => {
         if (!alive) return
-        setMlPred(d)
+        setMlPredRaw(d)
         saveCache(t, "ml", d)
       })
       .catch((e) => {
         console.error("Gagal mendapatkan prediksi ML:", e)
-        if (alive) setMlPred(null)
+        if (alive) setMlPredRaw(null)
       })
 
     return () => {
@@ -205,6 +256,23 @@ export default function Overview() {
       alive = false
     }
   }, [currentTicker, period])
+
+  // Riwayat prediksi (XGBoost & LLM) dari database — dipakai untuk menggambar
+  // garis prediksi MASA LALU pada chart, disambung ke prediksi masa depan.
+  useEffect(() => {
+    if (!currentTicker) {
+      setPredHist(null)
+      return
+    }
+    let alive = true
+    api
+      .getPredictionHistory(currentTicker, 400)
+      .then((d) => alive && setPredHist(d && d.history ? d.history : []))
+      .catch(() => alive && setPredHist([]))
+    return () => {
+      alive = false
+    }
+  }, [currentTicker])
 
   // Auto-simpan prediksi hari ini ke riwayat (agar DB sinkron dgn yang tampil).
   // Backend akan overwrite kalau dibuat hari ini, dan keep-first utk hari lalu.
@@ -257,15 +325,17 @@ export default function Overview() {
       api.getPrediction(t),
       api.getHistory(t, period, true),
       api.getMacro(true),
-    ]).then(([f, i, p, h, mac]) => {
+      api.getPredictionHistory(t, 400),
+    ]).then(([f, i, p, h, mac, ph]) => {
       setInfo(f.status === "fulfilled" ? f.value : null)
       setIndicators(i.status === "fulfilled" && i.value && i.value.rsi ? i.value : null)
       if (p.status === "fulfilled") {
-        setMlPred(p.value)
+        setMlPredRaw(p.value)
         saveCache(t, "ml", p.value)
       }
       setHist(h.status === "fulfilled" && h.value.data && h.value.data.length ? h.value.data : [])
       if (mac.status === "fulfilled") setMacroData(mac.value.data)
+      if (ph.status === "fulfilled") setPredHist(ph.value && ph.value.history ? ph.value.history : [])
       setIsRefreshing(false)
     })
     // Force refresh berita+sentimen melewati cache
@@ -288,7 +358,7 @@ export default function Overview() {
         ml_prediction: mlPred || undefined,
       }
       const res = await api.groqTechnical(payload)
-      setGroqTech(res)
+      setGroqTechRaw(res)
       setGroqTechTs(Date.now())
       saveCache(currentTicker, "groqTech", res)
     } catch (e) {
@@ -429,61 +499,95 @@ export default function Overview() {
       })
     })
 
-    if (predDates.length && Number.isFinite(lastClose)) {
-      const mlPreds3 = mlPred.predictions.slice(0, 3)
-      const mlConnector = Array(histLen).fill(null)
-      mlConnector[histLen - 1] = lastClose
-      datasets.push({
+    // ── Peta prediksi MASA LALU dari database (per tanggal target) ──
+    const xgbPastMap = {}
+    const llmPastMap = {}
+    ;(predHist || []).forEach((h) => {
+      if (h && h.xgb && h.xgb.predicted_price != null) xgbPastMap[h.target_date] = h.xgb.predicted_price
+      if (h && h.llm && h.llm.predicted_price != null) llmPastMap[h.target_date] = h.llm.predicted_price
+    })
+
+    // Bangun satu garis menyambung: prediksi masa lalu (dari DB) -> titik "kini"
+    // (harga aktual terakhir) -> prediksi masa depan.
+    const buildPredLine = (pastMap, futurePrices) => {
+      const arr = Array(labels.length).fill(null)
+      histLabels.forEach((d, i) => {
+        if (pastMap[d] != null) arr[i] = pastMap[d]
+      })
+      if (arr[histLen - 1] == null && Number.isFinite(lastClose)) arr[histLen - 1] = lastClose
+      futurePrices.forEach((p, i) => {
+        if (p != null) arr[histLen + i] = p
+      })
+      return arr
+    }
+    const buildPredRadius = (lineData, futureCount, hasTodayPast) =>
+      lineData.map((v, idx) =>
+        idx >= histLen ? 4 : idx === histLen - 1 ? (hasTodayPast ? 4 : futureCount ? 3 : 0) : v != null ? 4 : 0
+      )
+
+    // ── XGBoost: garis prediksi masa lalu + masa depan ──
+    const xgbFuture =
+      predDates.length && mlPred?.predictions ? mlPred.predictions.slice(0, 3).map((p) => p.price) : []
+    const hasXgbPast = Object.keys(xgbPastMap).length > 0
+    if (xgbFuture.length || hasXgbPast) {
+      const mlPreds3 = mlPred?.predictions ? mlPred.predictions.slice(0, 3) : []
+      const xgbData = buildPredLine(xgbPastMap, xgbFuture)
+      const ds = {
         label: "XGBoost",
-        data: [...mlConnector, ...mlPreds3.map((p) => p.price)],
+        data: xgbData,
         borderColor: "#2dd4a0",
         borderWidth: 2,
         borderDash: [6, 4],
-        pointRadius: [...Array(histLen - 1).fill(0), 3, ...mlPreds3.map(() => 4)],
+        pointRadius: buildPredRadius(xgbData, xgbFuture.length, xgbPastMap[histLabels[histLen - 1]] != null),
         pointBackgroundColor: "#2dd4a0",
         tension: 0.3,
         fill: false,
-        _isXgbBand: true,
-        _bandData: mlPreds3.map((p, i) => ({
+        spanGaps: true,
+      }
+      if (xgbFuture.length) {
+        ds._isXgbBand = true
+        ds._bandData = mlPreds3.map((p, i) => ({
           x: predDates[i],
           low: p.price_low ?? p.price * 0.98,
           high: p.price_high ?? p.price * 1.02,
-        })),
-      })
-
-      if (groqTech?.price_tomorrow) {
-        const llmPrices = [
-          groqTech.price_tomorrow,
-          groqTech.day2_price,
-          groqTech.day3_price,
-        ].filter(Boolean)
-        const llmLow = [groqTech.price_tomorrow_low, groqTech.day2_low, groqTech.day3_low]
-        const llmHigh = [groqTech.price_tomorrow_high, groqTech.day2_high, groqTech.day3_high]
-
-        const gd = Array(labels.length).fill(null)
-        gd[histLen - 1] = lastClose
-        llmPrices.forEach((p, i) => { if (p) gd[histLen + i] = p })
-        datasets.push({
-          label: "LLM",
-          data: gd,
-          borderColor: "#a78bfa",
-          borderWidth: 2,
-          borderDash: [6, 4],
-          pointRadius: [...Array(histLen - 1).fill(0), 3, ...llmPrices.map(() => 4)],
-          pointBackgroundColor: "#a78bfa",
-          tension: 0.3,
-          fill: false,
-          _isLlmBand: true,
-          _bandData: llmPrices.map((_, i) => ({
-            x: predDates[i],
-            low: llmLow[i] ?? lastClose * 0.97,
-            high: llmHigh[i] ?? lastClose * 1.03,
-          })),
-        })
+        }))
       }
+      datasets.push(ds)
+    }
+
+    // ── LLM: garis prediksi masa lalu + masa depan ──
+    const llmFuture = groqTech?.price_tomorrow
+      ? [groqTech.price_tomorrow, groqTech.day2_price, groqTech.day3_price]
+      : []
+    const hasLlmPast = Object.keys(llmPastMap).length > 0
+    if (llmFuture.length || hasLlmPast) {
+      const llmLow = [groqTech?.price_tomorrow_low, groqTech?.day2_low, groqTech?.day3_low]
+      const llmHigh = [groqTech?.price_tomorrow_high, groqTech?.day2_high, groqTech?.day3_high]
+      const llmData = buildPredLine(llmPastMap, llmFuture)
+      const ds = {
+        label: "LLM",
+        data: llmData,
+        borderColor: "#a78bfa",
+        borderWidth: 2,
+        borderDash: [6, 4],
+        pointRadius: buildPredRadius(llmData, llmFuture.length, llmPastMap[histLabels[histLen - 1]] != null),
+        pointBackgroundColor: "#a78bfa",
+        tension: 0.3,
+        fill: false,
+        spanGaps: true,
+      }
+      if (llmFuture.length) {
+        ds._isLlmBand = true
+        ds._bandData = llmFuture.map((_, i) => ({
+          x: predDates[i],
+          low: llmLow[i] ?? lastClose * 0.97,
+          high: llmHigh[i] ?? lastClose * 1.03,
+        }))
+      }
+      datasets.push(ds)
     }
     return { labels, datasets }
-  }, [hist, mlPred, groqTech, maPeriods])
+  }, [hist, mlPred, groqTech, maPeriods, predHist])
 
   // ── Volume chart data ───────────────────────────────────────────────
   const volumeChartData = useMemo(() => {

@@ -2122,6 +2122,8 @@
 .fc-hist-empty { padding: 18px 0; text-align: center; color: var(--text-muted); font-size: 12px; }
 .fc-hist-caption { font-size: 11px; color: var(--text-muted); margin: 14px 0 6px; }
 .fc-hist-pending { font-size: 11px; color: var(--text-muted); margin-top: 12px; }
+.fc-hist-filter { display: flex; align-items: center; gap: 8px; margin: 4px 0 10px; }
+.fc-hist-filter-label { font-size: 11px; color: var(--text-muted); font-weight: 600; }
 
 /* ================================================================
    CHAT AI — SIDE-BY-SIDE CANDLESTICK LAYOUT
