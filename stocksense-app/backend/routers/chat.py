@@ -1,4 +1,4 @@
-"""Chat AI endpoint — AI Advisor Manajemen Saham IDX via Groq.
+﻿"""Chat AI endpoint â€” AI Advisor Manajemen Saham IDX via Groq.
 Dilengkapi dengan konteks grafik harga, mode analisis, dan format Markdown.
 Memakai ulang rotasi multi-API-key & penanganan limit dari grok.py."""
 from fastapi import APIRouter, HTTPException
@@ -55,33 +55,65 @@ def _rsi_interpretation(rsi: float) -> str:
 
 
 def _mode_instructions(mode: str) -> str:
-    """Instruksi tambahan berdasarkan mode analisis yang dipilih pengguna."""
+    """Instruksi detail per mode — setiap mode punya struktur output, fokus, dan persona berbeda."""
     if mode == "technical":
         return (
-            "\n\nMode Analisis: **TEKNIKAL**. "
-            "Fokus pada pola harga, indikator teknikal (RSI, MACD, Moving Average, Bollinger Bands), "
-            "level support dan resistance, serta sinyal entry/exit. "
-            "Gunakan terminologi analisis teknikal yang tepat namun tetap mudah dipahami."
+            "\n\n## MODE: ANALISIS TEKNIKAL 📊"
+            "\nKamu bertindak sebagai **analis teknikal profesional**."
+            "\nStruktur jawaban WAJIB:"
+            "\n1. **Tren Utama** — Identifikasi tren dominan (uptrend/downtrend/sideways) berdasarkan candlestick"
+            "\n2. **Analisis Indikator** — Bahas RSI (nilai, overbought/oversold/divergensi), MACD (histogram, persilangan, momentum), MA20 vs MA50 (golden/death cross), Bollinger Bands (posisi dan lebar)"
+            "\n3. **Level Kunci** — Sebutkan 1-2 level support dan 1-2 level resistance terdekat dengan harga saat ini (gunakan angka spesifik dari data)"
+            "\n4. **Pola Chart** — Identifikasi pola candlestick atau chart pattern yang terbentuk (jika ada)"
+            "\n5. **Setup Trading** — Entry yang ideal, stop loss, dan target harga (sebutkan risk/reward ratio)"
+            "\n6. **Kesimpulan Teknikal** — Verdict: BELI / HOLD / JUAL berdasarkan analisis teknikal"
+            "\nLarangan: JANGAN membahas berita atau makroekonomi kecuali relevan langsung dengan pola teknikal."
         )
     if mode == "news":
         return (
-            "\n\nMode Analisis: **BERITA & SENTIMEN**. "
-            "Fokus pada analisis dampak berita, sentimen pasar, katalis positif/negatif, "
-            "dan bagaimana kondisi fundamental emiten mempengaruhi harga. "
-            "Kaitkan sentimen berita dengan pergerakan harga pada grafik."
+            "\n\n## MODE: ANALISIS BERITA & SENTIMEN 📰"
+            "\nKamu bertindak sebagai **analis sentimen pasar dan strategi investasi berbasis berita**."
+            "\nStruktur jawaban WAJIB:"
+            "\n1. **Sentimen Pasar** — Tentukan apakah sentimen saat ini positif/negatif/netral dan alasannya"
+            "\n2. **Katalis Positif** — Berita, event, atau pengumuman yang mendorong kenaikan (sebutkan spesifik)"
+            "\n3. **Katalis Negatif & Risiko** — Berita atau faktor yang menekan harga"
+            "\n4. **Analisis Fundamental Singkat** — Kondisi bisnis emiten: pendapatan, laba, posisi kompetitif"
+            "\n5. **Dampak ke Harga** — Apakah berita sudah 'priced-in' di chart? Gap antara fundamental dan harga pasar?"
+            "\n6. **Proyeksi Sentimen** — Apakah sentimen akan membaik atau memburuk 1-3 bulan ke depan?"
+            "\n7. **Kesimpulan** — Apakah sentimen pasar mendukung posisi BELI/HOLD/JUAL?"
+            "\nLarangan: Jangan terlalu dalam ke analisis teknikal — cukup kaitkan sentimen dengan pergerakan harga secara singkat."
         )
     if mode == "macro":
         return (
-            "\n\nMode Analisis: **MAKRO EKONOMI**. "
-            "Fokus pada kondisi makroekonomi Indonesia: suku bunga BI, inflasi, nilai tukar rupiah, "
-            "harga komoditas, dan pengaruh kondisi global. "
-            "Jelaskan bagaimana faktor makro memengaruhi saham yang sedang dibahas."
+            "\n\n## MODE: ANALISIS MAKRO EKONOMI 🌍"
+            "\nKamu bertindak sebagai **ekonom makro dan analis pasar modal**."
+            "\nStruktur jawaban WAJIB:"
+            "\n1. **Kondisi Makro Indonesia** — Suku bunga BI Rate (arah kebijakan moneter), inflasi dan dampaknya ke margin perusahaan, nilai tukar Rupiah terhadap USD"
+            "\n2. **Faktor Global** — Kondisi ekonomi AS dan China, harga komoditas relevan (minyak, batu bara, nikel, CPO sesuai sektor emiten), aliran modal asing ke Indonesia"
+            "\n3. **Dampak Langsung ke Emiten** — Bagaimana kondisi makro di atas memengaruhi bisnis emiten ini secara konkret (pendapatan, biaya, demand)"
+            "\n4. **Skenario Risiko Makro** — Apa yang terjadi jika suku bunga naik? Rupiah melemah? Komoditas turun?"
+            "\n5. **Outlook 3-6 Bulan** — Prediksi kondisi makro dan implikasinya ke harga saham"
+            "\n6. **Kesimpulan** — Apakah kondisi makro mendukung atau menghambat apresiasi saham ini?"
+            "\nLarangan: JANGAN terlalu teknikal. Fokus pada big picture ekonomi dan kaitkan ke dampak konkret bisnis emiten."
         )
     # default: general
     return (
-        "\n\nMode Analisis: **UMUM**. "
-        "Berikan analisis holistik yang mencakup teknikal, fundamental, dan makro "
-        "secara seimbang. Berikan rekomendasi yang actionable dengan dasar yang jelas."
+        "\n\n## MODE: ANALISIS UMUM (HOLISTIK) 🔍"
+        "\nKamu memberikan **analisis investasi komprehensif dan seimbang** yang mencakup semua aspek."
+        "\nStruktur jawaban WAJIB:"
+        "\n1. **Ringkasan Eksekutif** — 2-3 kalimat kesimpulan utama tentang kondisi saham saat ini"
+        "\n2. **Snapshot Teknikal** — Tren, RSI, MACD, level support/resistance kunci (singkat, 3-4 poin)"
+        "\n3. **Kondisi Fundamental** — Kinerja bisnis terkini, valuasi (P/E vs sektor), posisi kompetitif"
+        "\n4. **Sentimen & Makro** — Berita terbaru, kondisi ekonomi yang relevan, sentimen investor"
+        "\n5. **Risiko Utama** — 2-3 risiko paling signifikan yang perlu diwaspadai investor"
+        "\n6. **Scorecard Investasi**:"
+        "\n   | Aspek | Status | Keterangan |"
+        "\n   |-------|--------|-----------|"
+        "\n   | Teknikal | 🟢/🟡/🔴 | ... |"
+        "\n   | Fundamental | 🟢/🟡/🔴 | ... |"
+        "\n   | Makro & Sentimen | 🟢/🟡/🔴 | ... |"
+        "\n7. **Rekomendasi Akhir** — **BELI / HOLD / JUAL** dengan alasan ringkas dan level harga target"
+        "\nBerikan analisis yang actionable. Gunakan data dari konteks yang tersedia sebagai basis analisis."
     )
 
 
@@ -95,7 +127,7 @@ def _system_prompt(ctx: Optional[dict], mode: str = "general") -> str:
         "\n- Jawab dalam **Bahasa Indonesia** yang profesional namun mudah dipahami"
         "\n- Gunakan format **Markdown**: bold untuk angka penting, bullet list untuk poin-poin, "
         "tabel untuk perbandingan data"
-        "\n- Struktur jawaban: ringkasan singkat → analisis detail → kesimpulan/rekomendasi"
+        "\n- Struktur jawaban: ringkasan singkat â†’ analisis detail â†’ kesimpulan/rekomendasi"
         "\n- Selalu sertakan **disclaimer** singkat bahwa analisis ini bukan rekomendasi "
         "jual/beli resmi dan keputusan investasi ada di tangan pengguna"
         "\n- Bila pengguna mengunggah gambar grafik/candlestick, analisis pola harga, "
@@ -111,7 +143,7 @@ def _system_prompt(ctx: Optional[dict], mode: str = "general") -> str:
         lines = [
             "",
             f"---",
-            f"**Konteks Saham Aktif — {ticker}:**",
+            f"**Konteks Saham Aktif â€” {ticker}:**",
         ]
 
         if ctx.get("price") is not None:
@@ -120,20 +152,20 @@ def _system_prompt(ctx: Optional[dict], mode: str = "general") -> str:
 
         if ctx.get("change_pct") is not None:
             chg = ctx.get('change_pct')
-            arah = "naik ↑" if float(chg) >= 0 else "turun ↓"
+            arah = "naik â†‘" if float(chg) >= 0 else "turun â†“"
             lines.append(f"- Perubahan hari ini: **{chg}%** ({arah})")
 
         if ctx.get("rsi") is not None:
             rsi_val = ctx.get('rsi')
             rsi_interp = _rsi_interpretation(float(rsi_val))
-            lines.append(f"- RSI: **{round(float(rsi_val), 1)}** → kondisi {rsi_interp}")
+            lines.append(f"- RSI: **{round(float(rsi_val), 1)}** â†’ kondisi {rsi_interp}")
 
         if ctx.get("macd_signal") is not None:
             lines.append(f"- Sinyal MACD: **{ctx.get('macd_signal')}**")
 
         if ctx.get("golden_cross") is not None:
             gc = ctx.get('golden_cross')
-            lines.append(f"- Golden Cross: **{'Ya ✅' if gc else 'Tidak ❌'}**")
+            lines.append(f"- Golden Cross: **{'Ya âœ…' if gc else 'Tidak âŒ'}**")
 
         if ctx.get("ml_recommendation") is not None:
             conf = ctx.get('ml_confidence')
@@ -151,7 +183,7 @@ def _system_prompt(ctx: Optional[dict], mode: str = "general") -> str:
             lines.append(f"**Grafik yang sedang dilihat pengguna ({period_label}):**")
 
             if ctx.get("chart_trend"):
-                trend_icon = "📈" if ctx.get('chart_trend') == "bullish" else "📉"
+                trend_icon = "ðŸ“ˆ" if ctx.get('chart_trend') == "bullish" else "ðŸ“‰"
                 lines.append(f"- Tren periode: **{ctx.get('chart_trend').upper()}** {trend_icon}")
 
             if ctx.get("chart_change_pct") is not None:
