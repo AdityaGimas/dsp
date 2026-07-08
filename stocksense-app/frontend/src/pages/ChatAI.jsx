@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useApp } from "../context/AppContext.jsx"
 import { api } from "../api/client.js"
 import TickerSearchBar from "../components/TickerSearchBar.jsx"
@@ -14,108 +14,39 @@ const TIMEFRAMES = [
 ]
 
 const MODES = [
-  { key: "general",   label: "🔍 Umum",     desc: "Analisis holistik: teknikal + fundamental + makro" },
-  { key: "technical", label: "⚡ Teknikal", desc: "RSI, MACD, support/resistance, setup trading" },
-  { key: "news",      label: "📰 Berita",   desc: "Sentimen, katalis, berita emiten" },
-  { key: "macro",     label: "🌍 Makro",    desc: "Suku bunga, inflasi, Rupiah, komoditas" },
+  { key: "general",   label: "🔍 Umum",     desc: "Analisis holistik: teknikal + prediksi ML + sentimen + makro" },
+  { key: "technical", label: "⚡ Teknikal", desc: "RSI, MACD, support/resistance, setup trading dari data indikator" },
+  { key: "news",      label: "📰 Berita",   desc: "Sentimen IndoBERT, katalis, headlines berita emiten" },
+  { key: "macro",     label: "🌍 Makro",    desc: "BI Rate, inflasi, PDB, IHSG, USD/IDR dari data resmi" },
 ]
 
-const CHAT_MODELS = [
-  { id: "meta-llama/llama-4-scout-17b-16e-instruct", name: "LLaMA-4 Scout",  color: "var(--purple)" },
-  { id: "llama-3.3-70b-versatile",                   name: "LLaMA 3.3 70B",  color: "var(--teal)"   },
-  { id: "llama-3.1-8b-instant",                      name: "LLaMA 3.1 8B",   color: "var(--blue)"   },
-  { id: "qwen-2.5-32b",                              name: "Qwen 2.5 32B",   color: "var(--amber)"  },
-  { id: "gemma2-9b-it",                              name: "Gemma2 9B",      color: "var(--green)"  },
-]
-
-function ModelPicker({ value, onChange }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef(null)
-  const current = CHAT_MODELS.find(m => m.id === value) || CHAT_MODELS[0]
-
-  useEffect(() => {
-    function onOutside(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener("mousedown", onOutside)
-    return () => document.removeEventListener("mousedown", onOutside)
-  }, [])
-
-  return (
-    <div ref={ref} style={{ position: "relative" }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        style={{
-          display: "flex", alignItems: "center", gap: 6,
-          background: "transparent", border: "none",
-          padding: 0, cursor: "pointer", transition: "all 0.2s",
-        }}
-      >
-        <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)", whiteSpace: "nowrap" }}>{current.name}</span>
-        <span style={{ fontSize: 8, color: "var(--text-muted)", marginLeft: 2, opacity: 0.7 }}>{open ? "▲" : "▼"}</span>
-      </button>
-      {open && (
-        <div style={{
-          position: "absolute", bottom: "calc(100% + 12px)", right: 0,
-          background: "var(--bg-card)", border: "1px solid var(--border-light)",
-          borderRadius: 8, padding: "6px", minWidth: 200,
-          boxShadow: "0 12px 40px rgba(0,0,0,0.6)",
-          zIndex: 999, display: "flex", flexDirection: "column", gap: 2,
-        }}>
-          <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600, padding: "4px 8px 6px" }}>Pilih Model AI</div>
-          {CHAT_MODELS.map(m => (
-            <button
-              key={m.id}
-              onClick={() => { onChange(m.id); setOpen(false) }}
-              style={{
-                display: "flex", alignItems: "center", gap: 10,
-                background: value === m.id ? "rgba(255,255,255,0.06)" : "transparent",
-                border: "none",
-                borderRadius: 6, padding: "8px 10px",
-                cursor: "pointer", textAlign: "left", transition: "all 0.15s",
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
-              onMouseLeave={e => e.currentTarget.style.background = value === m.id ? "rgba(255,255,255,0.06)" : "transparent"}
-            >
-              <div style={{
-                background: m.color,
-                borderRadius: "50%", width: 8, height: 8,
-                flexShrink: 0, boxShadow: `0 0 8px ${m.color}88`
-              }} />
-              <div style={{ fontSize: 13, fontWeight: value === m.id ? 600 : 400, color: value === m.id ? "var(--text-primary)" : "var(--text-secondary)" }}>
-                {m.name}
-              </div>
-              {value === m.id && <span style={{ marginLeft: "auto", color: "var(--text-muted)", fontSize: 13 }}>✓</span>}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
+// Model default — LLaMA-4 Scout (tidak bisa diganti via UI)
+const DEFAULT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 const QUICK_PROMPTS = {
   general: [
-    { icon: "📋", text: "Analisis lengkap saham ini" },
-    { icon: "🎯", text: "Beli, hold, atau jual?" },
+    { icon: "📋", text: "Analisis lengkap saham ini berdasarkan semua data" },
+    { icon: "🎯", text: "Beli, hold, atau jual berdasarkan data prediksi dan sentimen?" },
     { icon: "💡", text: "Apakah layak diinvestasi sekarang?" },
-    { icon: "⚠️", text: "Apa risiko terbesar saham ini?" },
+    { icon: "⚠️", text: "Apa risiko terbesar berdasarkan kondisi saat ini?" },
   ],
   technical: [
-    { icon: "🕯️", text: "Analisis candlestick chart ini" },
-    { icon: "🔍", text: "Level support dan resistance" },
-    { icon: "📡", text: "Sinyal RSI dan MACD saat ini" },
-    { icon: "↔️", text: "Bandingkan MA20 dan MA50" },
+    { icon: "🕯️", text: "Analisis candlestick dan tren dari grafik ini" },
+    { icon: "🔍", text: "Level support dan resistance berdasarkan data chart" },
+    { icon: "📡", text: "Jelaskan sinyal RSI dan MACD saat ini" },
+    { icon: "🎯", text: "Setup trading: entry, stop loss, dan target dari prediksi" },
   ],
   news: [
-    { icon: "📰", text: "Dampak sentimen berita ke harga" },
-    { icon: "🔥", text: "Katalis positif terbaru" },
-    { icon: "🚨", text: "Risiko dari berita negatif" },
-    { icon: "📊", text: "Sentimen pasar minggu ini" },
+    { icon: "📰", text: "Jelaskan sentimen pasar berdasarkan berita terbaru" },
+    { icon: "🔥", text: "Apa katalis positif dari berita yang ada?" },
+    { icon: "🚨", text: "Apa risiko dari berita negatif yang tersedia?" },
+    { icon: "📊", text: "Bagaimana sentimen berita mempengaruhi harga saham ini?" },
   ],
   macro: [
-    { icon: "🏦", text: "Dampak suku bunga BI" },
-    { icon: "💱", text: "Pengaruh nilai tukar rupiah" },
-    { icon: "🌍", text: "Faktor global yang mempengaruhi" },
-    { icon: "📉", text: "Risiko makro yang perlu diwaspadai" },
+    { icon: "🏦", text: "Bagaimana dampak BI Rate saat ini ke saham ini?" },
+    { icon: "💱", text: "Analisis pengaruh USD/IDR dan inflasi ke emiten ini" },
+    { icon: "🌍", text: "Bagaimana kondisi makro Indonesia mempengaruhi saham ini?" },
+    { icon: "📉", text: "Skenario risiko makro yang perlu diwaspadai" },
   ],
 }
 
@@ -144,7 +75,6 @@ function downscaleImage(file, maxSize, quality) {
 
 // ── Markdown renderer (line-by-line parser) ──────────────────────────────────
 function mdInline(text) {
-  // Protect already-escaped HTML, then apply inline formatting
   return text
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/__([^_]+)__/g, "<strong>$1</strong>")
@@ -177,14 +107,12 @@ function mdTable(rows) {
 function renderMarkdown(raw) {
   if (!raw) return ""
 
-  // 1. Protect code blocks
   const codes = []
   let text = raw.replace(/```([\w]*)\r?\n?([\s\S]*?)```/g, (_, lang, code) => {
     codes.push({ lang: lang || "", code: code.replace(/</g, "&lt;").replace(/>/g, "&gt;") })
     return `\x00C${codes.length - 1}\x00`
   })
 
-  // 2. Escape remaining HTML
   text = text.replace(/&(?!amp;|lt;|gt;|nbsp;)/g, "&amp;")
     .replace(/<(?![/\x00])/g, "&lt;")
 
@@ -196,7 +124,6 @@ function renderMarkdown(raw) {
     const line = lines[i]
     const trimmed = line.trim()
 
-    // Code block placeholder
     const codeMatch = trimmed.match(/^\x00C(\d+)\x00$/)
     if (codeMatch) {
       const { lang, code } = codes[parseInt(codeMatch[1])]
@@ -208,15 +135,12 @@ function renderMarkdown(raw) {
       i++; continue
     }
 
-    // HR
     if (/^---+$/.test(trimmed)) { out.push("<hr/>"); i++; continue }
 
-    // Headings
     if (/^### /.test(line)) { out.push(`<h3>${mdInline(line.slice(4))}</h3>`); i++; continue }
     if (/^## /.test(line))  { out.push(`<h2>${mdInline(line.slice(3))}</h2>`); i++; continue }
     if (/^# /.test(line))   { out.push(`<h1>${mdInline(line.slice(2))}</h1>`); i++; continue }
 
-    // Blockquote
     if (/^> /.test(line)) {
       const qLines = []
       while (i < lines.length && /^> /.test(lines[i])) { qLines.push(mdInline(lines[i].slice(2))); i++ }
@@ -224,7 +148,6 @@ function renderMarkdown(raw) {
       continue
     }
 
-    // Table
     if (/^\|.+\|/.test(line)) {
       const tRows = []
       while (i < lines.length && /^\|/.test(lines[i].trim())) { tRows.push(lines[i]); i++ }
@@ -232,7 +155,6 @@ function renderMarkdown(raw) {
       continue
     }
 
-    // Ordered list (collect all consecutive)
     if (/^\d+\.\s/.test(line)) {
       const items = []
       while (i < lines.length && /^\d+\.\s/.test(lines[i])) {
@@ -243,7 +165,6 @@ function renderMarkdown(raw) {
       continue
     }
 
-    // Unordered list (collect all consecutive)
     if (/^[-*]\s/.test(line)) {
       const items = []
       while (i < lines.length && /^[-*]\s/.test(lines[i])) {
@@ -254,10 +175,8 @@ function renderMarkdown(raw) {
       continue
     }
 
-    // Empty line (skip — used as block separator)
     if (!trimmed) { i++; continue }
 
-    // Paragraph: accumulate consecutive regular lines
     const pLines = []
     while (i < lines.length) {
       const l = lines[i], lt = l.trim()
@@ -273,26 +192,6 @@ function renderMarkdown(raw) {
 
 function fmtTime(ts) {
   return new Date(ts).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
-}
-function rsiColor(v) {
-  return v >= 70 ? "var(--red)" : v <= 30 ? "var(--green)" : "var(--blue)"
-}
-function rsiLabel(v) {
-  return v >= 70 ? "Overbought" : v <= 30 ? "Oversold" : "Netral"
-}
-function macdClass(s) {
-  if (!s) return "neutral"
-  const l = String(s).toLowerCase()
-  return l.includes("bull") || l.includes("beli") || l.includes("buy") ? "bullish"
-    : l.includes("bear") || l.includes("jual") || l.includes("sell") ? "bearish"
-    : "neutral"
-}
-function mlClass(r) {
-  if (!r) return "neutral"
-  const u = String(r).toUpperCase()
-  if (u === "BUY" || u === "BELI" || u === "STRONG BUY") return "buy"
-  if (u === "SELL" || u === "JUAL" || u === "STRONG SELL") return "sell"
-  return "hold"
 }
 
 // ── Candlestick Canvas draw function ─────────────────────────────────────────
@@ -325,7 +224,6 @@ function drawCandlestick(canvas, data) {
 
   ctx.clearRect(0, 0, W, H)
 
-  // Grid + price axis
   for (let i = 0; i <= 5; i++) {
     const frac = i / 5
     const y = PAD.top + cH * frac
@@ -339,7 +237,6 @@ function drawCandlestick(canvas, data) {
     ctx.fillText(price >= 1000 ? (price / 1000).toFixed(1) + "K" : price.toFixed(0), W - 4, y + 3)
   }
 
-  // Candles
   data.forEach((d, i) => {
     const x = toX(i), isBull = d.close >= d.open
     const col = isBull ? "#2dd4a0" : "#f55e5e"
@@ -351,7 +248,6 @@ function drawCandlestick(canvas, data) {
     ctx.fillRect(x - bodyW / 2, yTop, bodyW, bH)
   })
 
-  // X axis date labels
   const maxLabels = Math.floor(W / 64)
   const step = Math.max(1, Math.floor(n / maxLabels))
   ctx.fillStyle = "#7e8494"; ctx.font = '9px "Space Mono", monospace'; ctx.textAlign = "center"
@@ -432,6 +328,8 @@ function CandlestickChart({ data, loading }) {
   )
 }
 
+
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function ChatAI() {
   const { currentTicker } = useApp()
@@ -444,16 +342,27 @@ export default function ChatAI() {
   const [image, setImage] = useState(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState("")
-  const [stockCtx, setStockCtx] = useState(null)
-  const [mode, setMode] = useState("general")
-  const [chatModel, setChatModel] = useState("meta-llama/llama-4-scout-17b-16e-instruct")
-  const [period, setPeriod] = useState("3mo")
-  const [histData, setHistData] = useState(null)
-  const [histLoading, setHistLoading] = useState(false)
-  const [chartStats, setChartStats] = useState(null)
 
-  const scrollRef = useRef(null)
-  const fileRef = useRef(null)
+  // ── Data states
+  const [stockCtx, setStockCtx]       = useState(null)
+  const [predCtx, setPredCtx]         = useState(null)      // Prediksi ML lengkap
+  const [newsCtx, setNewsCtx]         = useState(null)      // Sentimen + headlines
+  const [macroCtx, setMacroCtx]       = useState(null)      // Data makro
+
+  // ── Loading states
+  const [loadingTech, setLoadingTech]     = useState(false)
+  const [loadingPred, setLoadingPred]     = useState(false)
+  const [loadingNews, setLoadingNews]     = useState(false)
+  const [loadingMacro, setLoadingMacro]   = useState(false)
+
+  const [mode, setMode]           = useState("general")
+  const [period, setPeriod]       = useState("3mo")
+  const [histData, setHistData]   = useState(null)
+  const [histLoading, setHistLoading] = useState(false)
+  const [chartStats, setChartStats]   = useState(null)
+
+  const scrollRef   = useRef(null)
+  const fileRef     = useRef(null)
   const textareaRef = useRef(null)
 
   useEffect(() => {
@@ -465,19 +374,18 @@ export default function ChatAI() {
     if (el) el.scrollTop = el.scrollHeight
   }, [messages, busy])
 
-  // Fetch stock context
+  // ── 1. Fetch data teknikal (harga + indikator)
   useEffect(() => {
     if (!currentTicker) { setStockCtx(null); return }
     let alive = true
+    setLoadingTech(true)
     Promise.allSettled([
       api.getStockInfo(currentTicker),
       api.getIndicators(currentTicker),
-      api.getPrediction(currentTicker),
-    ]).then(([inf, ind, pred]) => {
+    ]).then(([inf, ind]) => {
       if (!alive) return
       const info = inf.status === "fulfilled" ? inf.value : null
       const indi = ind.status === "fulfilled" ? ind.value : null
-      const pr   = pred.status === "fulfilled" ? pred.value : null
       setStockCtx({
         ticker: currentTicker,
         price: info?.current_price ?? null,
@@ -485,14 +393,136 @@ export default function ChatAI() {
         rsi: indi?.rsi?.value ?? null,
         macd_signal: indi?.macd?.signal ?? null,
         golden_cross: indi?.moving_average?.golden_cross ?? null,
-        ml_recommendation: pr?.recommendation ?? null,
-        ml_confidence: pr?.confidence ?? null,
       })
-    })
+    }).finally(() => { if (alive) setLoadingTech(false) })
     return () => { alive = false }
   }, [currentTicker])
 
-  // Fetch history
+  // ── 2. Fetch prediksi ML lengkap
+  useEffect(() => {
+    if (!currentTicker) { setPredCtx(null); return }
+    let alive = true
+    setLoadingPred(true)
+    api.getPrediction(currentTicker)
+      .then(pr => {
+        if (!alive) return
+        setPredCtx({
+          ml_recommendation: pr?.recommendation ?? null,
+          ml_confidence: pr?.confidence ?? null,
+          ml_entry: pr?.entry ?? null,
+          ml_target: pr?.target ?? null,
+          ml_stop_loss: pr?.stop_loss ?? null,
+          ml_accuracy: pr?.model_accuracy ?? null,
+          ml_predictions: (pr?.predictions ?? []).slice(0, 3).map(p => ({
+            date: p.date,
+            price: p.price,
+            change_pct: p.change_pct,
+            confidence: p.confidence,
+          })),
+        })
+      })
+      .catch(() => { if (alive) setPredCtx(null) })
+      .finally(() => { if (alive) setLoadingPred(false) })
+    return () => { alive = false }
+  }, [currentTicker])
+
+  // ── 3. Fetch berita + sentimen
+  useEffect(() => {
+    if (!currentTicker) { setNewsCtx(null); return }
+    let alive = true
+    setLoadingNews(true)
+    setNewsCtx(null)
+
+    api.getNews(currentTicker, 15)
+      .then(async res => {
+        if (!alive) return
+        const articles = (res?.articles || res || []).slice(0, 10)
+        if (!articles.length) {
+          setNewsCtx({ noData: true })
+          return
+        }
+
+        // Predict sentimen untuk artikel yang tersedia
+        try {
+          const sentRes = await api.predictSentiment(
+            currentTicker,
+            articles.map(a => ({ title: a.title || "", content: a.content || a.summary || "", category: a.category || "market" }))
+          )
+          if (!alive) return
+
+          const summary = sentRes?.summary ?? {}
+          const results = sentRes?.results ?? []
+
+          // Gabungkan headline dengan sentimen
+          const headlines = articles.slice(0, 8).map((a, i) => ({
+            title: a.title || "",
+            sentiment: results[i]?.sentiment || "neutral",
+          }))
+
+          setNewsCtx({
+            sentiment_overall: summary.overall || "neutral",
+            sentiment_score: summary.aggregate_score ?? summary.score ?? null,
+            sentiment_positive_pct: summary.positive_pct ?? null,
+            sentiment_negative_pct: summary.negative_pct ?? null,
+            sentiment_neutral_pct: summary.neutral_pct ?? null,
+            news_headlines: headlines,
+          })
+        } catch {
+          // Jika sentimen gagal, simpan headlines saja tanpa skor
+          if (!alive) return
+          setNewsCtx({
+            sentiment_overall: null,
+            news_headlines: articles.slice(0, 8).map(a => ({ title: a.title || "", sentiment: "neutral" })),
+          })
+        }
+      })
+      .catch(() => { if (alive) setNewsCtx(null) })
+      .finally(() => { if (alive) setLoadingNews(false) })
+
+    return () => { alive = false }
+  }, [currentTicker])
+
+  // ── 4. Fetch makro ekonomi (sekali saat mount, refresh setiap 10 menit)
+  useEffect(() => {
+    let alive = true
+    setLoadingMacro(true)
+
+    function fetchMacro() {
+      api.getMacro()
+        .then(res => {
+          if (!alive) return
+          // Struktur dari macro_data.py:
+          // res.data.IHSG.value, res.data.USDIDR.value
+          // res.data.BIRate.value, res.data.Inflation.value, res.data.GDP.value
+          const data = res?.data ?? {}
+
+          const ihsg   = data?.IHSG   ?? null
+          const usdidr = data?.USDIDR ?? null
+          const biRate = data?.BIRate  ?? null
+          const infl   = data?.Inflation ?? null
+          const gdp    = data?.GDP ?? null
+
+          setMacroCtx({
+            macro_bi_rate:       biRate?.value ?? null,
+            macro_bi_rate_desc:  biRate?.desc  ?? null,
+            macro_inflation:     infl?.value   ?? null,
+            macro_gdp:           gdp?.value    ?? null,
+            macro_ihsg:          ihsg?.value   ?? null,
+            macro_ihsg_change:   ihsg?.change_pct ?? null,
+            macro_usdidr:        usdidr?.value ?? null,
+            macro_usdidr_change: usdidr?.change_pct ?? null,
+          })
+        })
+        .catch(() => { if (alive) setMacroCtx(null) })
+        .finally(() => { if (alive) setLoadingMacro(false) })
+    }
+
+    fetchMacro()
+    const interval = setInterval(fetchMacro, 10 * 60 * 1000) // refresh 10 menit
+    return () => { alive = false; clearInterval(interval) }
+  }, [])
+
+  // ── 5. Fetch history candlestick
   useEffect(() => {
     if (!currentTicker) { setHistData(null); setChartStats(null); return }
     let alive = true
@@ -520,17 +550,26 @@ export default function ChatAI() {
     return () => { alive = false }
   }, [currentTicker, period])
 
+  // ── Gabungkan semua data ke fullCtx yang dikirim ke AI
   const fullCtx = useMemo(() => {
     if (!stockCtx) return null
     return {
+      // Teknikal dasar
       ...stockCtx,
+      // Prediksi ML
+      ...(predCtx || {}),
+      // Berita & Sentimen
+      ...(newsCtx && !newsCtx.noData ? newsCtx : {}),
+      // Makro
+      ...(macroCtx || {}),
+      // Chart
       chart_period: period,
       chart_trend: chartStats?.trend ?? null,
       chart_change_pct: chartStats?.changePct ?? null,
       chart_high: chartStats?.high ?? null,
       chart_low: chartStats?.low ?? null,
     }
-  }, [stockCtx, period, chartStats])
+  }, [stockCtx, predCtx, newsCtx, macroCtx, period, chartStats])
 
   async function handleFile(e) {
     const file = e.target.files?.[0]
@@ -555,7 +594,7 @@ export default function ChatAI() {
         messages: next.map(m => ({ role: m.role, content: m.content || "", image: m.image })),
         stock_context: fullCtx || undefined,
         mode,
-        model: chatModel,
+        model: DEFAULT_MODEL,
       })
       setMessages(cur => [...cur, { role: "assistant", content: res.reply || "(kosong)", ts: Date.now() }])
     } catch (e) {
@@ -565,7 +604,7 @@ export default function ChatAI() {
   }
 
   function handleQuickPrompt(text) {
-    const fullText = code ? text + " " + code : text
+    const fullText = code ? text + " untuk saham " + code : text
     send(fullText)
   }
 
@@ -584,6 +623,16 @@ export default function ChatAI() {
   const prompts = QUICK_PROMPTS[mode] || QUICK_PROMPTS.general
   const chgNum = stockCtx?.change_pct != null ? parseFloat(stockCtx.change_pct) : null
 
+  // Hitung data summary untuk status bar
+  const dataLoading = loadingTech || loadingPred || loadingNews || loadingMacro
+  const dataReady = {
+    tech: !!stockCtx,
+    pred: !!predCtx,
+    news: !!(newsCtx && !newsCtx.noData),
+    macro: !!macroCtx,
+  }
+  const readyCount = Object.values(dataReady).filter(Boolean).length
+
   return (
     <>
       <TickerSearchBar label="Chat AI" />
@@ -596,7 +645,15 @@ export default function ChatAI() {
             <div className="chat-hdr-avatar">🤖</div>
             <div>
               <div className="chat-hdr-name">StockSense AI Advisor</div>
-              <div className="chat-hdr-sub">AI Advisor · IDX Specialist</div>
+              <div className="chat-hdr-sub">
+                Analisis berbasis data real-time dashboard
+                {currentTicker && (
+                  <span style={{ marginLeft: 6, opacity: 0.7 }}>
+                    · {readyCount}/4 data dimuat
+                    {dataLoading && " ⏳"}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -676,71 +733,7 @@ export default function ChatAI() {
               )}
             </div>
 
-            <div className="chat-lpanel-sep" />
 
-            {/* Indicators */}
-            <div className="chat-ctx-wrap">
-              {stockCtx?.ticker ? (
-                <>
-                  {stockCtx.rsi != null && (
-                    <div className="chat-ctx-block">
-                      <div className="chat-ctx-row">
-                        <span className="chat-ctx-lbl">RSI (14)</span>
-                        <span className="chat-ctx-val" style={{ color: rsiColor(stockCtx.rsi) }}>
-                          {Math.round(stockCtx.rsi)} — {rsiLabel(stockCtx.rsi)}
-                        </span>
-                      </div>
-                      <div className="chat-rsi-track">
-                        <div className="chat-rsi-fill" style={{ width: Math.min(stockCtx.rsi, 100) + "%", background: rsiColor(stockCtx.rsi) }} />
-                        <div className="chat-rsi-line" style={{ left: "70%" }} />
-                        <div className="chat-rsi-line" style={{ left: "30%" }} />
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="chat-badge-grid">
-                    {stockCtx.macd_signal && (
-                      <div className="chat-badge-item">
-                        <span className="chat-ctx-lbl">MACD</span>
-                        <span className={"chat-badge " + macdClass(stockCtx.macd_signal)}>{stockCtx.macd_signal}</span>
-                      </div>
-                    )}
-                    {stockCtx.golden_cross != null && (
-                      <div className="chat-badge-item">
-                        <span className="chat-ctx-lbl">Golden Cross</span>
-                        <span className={"chat-badge " + (stockCtx.golden_cross ? "bullish" : "neutral")}>
-                          {stockCtx.golden_cross ? "✅ Ya" : "❌ Tidak"}
-                        </span>
-                      </div>
-                    )}
-                    {stockCtx.ml_recommendation && (
-                      <div className="chat-badge-item">
-                        <span className="chat-ctx-lbl">ML Signal</span>
-                        <span className={"chat-badge " + mlClass(stockCtx.ml_recommendation)}>{stockCtx.ml_recommendation}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {stockCtx.ml_confidence != null && (
-                    <div className="chat-conf-block">
-                      <div className="chat-ctx-row">
-                        <span className="chat-ctx-lbl">Confidence</span>
-                        <span className="chat-ctx-val">{Math.round(stockCtx.ml_confidence * 100)}%</span>
-                      </div>
-                      <div className="chat-conf-track">
-                        <div className="chat-conf-fill" style={{ width: (stockCtx.ml_confidence * 100) + "%" }} />
-                      </div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="chat-ctx-empty">
-                  Pilih saham untuk melihat indikator teknikal real-time
-                </div>
-              )}
-            </div>
-
-            <div className="chat-lpanel-sep" />
 
             {/* Quick prompts */}
             <div className="chat-quick-wrap">
@@ -773,12 +766,13 @@ export default function ChatAI() {
                   <div className="chat-empty-icon">🤖</div>
                   <div className="chat-empty-title">AI Advisor Siap Membantu</div>
                   <div className="chat-empty-sub">
-                    Pilih mode analisis, gunakan Quick Ask, atau ketik pertanyaanmu di bawah.
+                    AI hanya menganalisis data yang sudah dimuat dari dashboard — tidak mengarang fakta.
                   </div>
                   <div className="chat-empty-hints">
-                    <div className="chat-empty-hint"><span>🕯️</span>Lihat candlestick, tanya analisis teknikal</div>
-                    <div className="chat-empty-hint"><span>⚡</span>Klik Quick Ask di panel kiri</div>
-                    <div className="chat-empty-hint"><span>🖼️</span>Upload screenshot chart untuk dianalisis</div>
+                    <div className="chat-empty-hint"><span>📊</span>Teknikal: RSI, MACD, support/resistance dari data nyata</div>
+                    <div className="chat-empty-hint"><span>📰</span>Berita: sentimen IndoBERT dari {newsCtx?.news_headlines?.length || 0} artikel terbaru</div>
+                    <div className="chat-empty-hint"><span>🌍</span>Makro: BI Rate {macroCtx?.macro_bi_rate ? macroCtx.macro_bi_rate + "%" : "..."}, inflasi, IHSG</div>
+                    <div className="chat-empty-hint"><span>🤖</span>Prediksi XGBoost: entry, target, stop-loss 3 hari ke depan</div>
                   </div>
                 </div>
               )}
@@ -839,7 +833,9 @@ export default function ChatAI() {
                 <textarea
                   ref={textareaRef}
                   className="chat-textarea"
-                  placeholder="Tulis pertanyaan... (Enter kirim, Shift+Enter baris baru)"
+                  placeholder={currentTicker
+                    ? `Tanya tentang ${code}... (data ${readyCount}/4 sudah dimuat)`
+                    : "Pilih saham dulu, lalu tanya AI..."}
                   value={input}
                   onInput={onTAInput}
                   onChange={e => setInput(e.target.value)}
@@ -855,13 +851,12 @@ export default function ChatAI() {
                   {busy ? "⋯" : "➤"}
                 </button>
               </div>
-              <div className="chat-input-hint" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div className="chat-input-hint">
                 <span>
                   {stockCtx?.ticker
-                    ? code + " · " + (MODES.find(m => m.key === mode)?.label || mode) + " · " + (TIMEFRAMES.find(t => t.value === period)?.label || period)
+                    ? `${code} · ${MODES.find(m => m.key === mode)?.label || mode} · ${TIMEFRAMES.find(t => t.value === period)?.label || period} · Data: ${readyCount}/4`
                     : "Pilih saham untuk analisis berbasis data real-time"}
                 </span>
-                <ModelPicker value={chatModel} onChange={setChatModel} />
               </div>
             </div>
 

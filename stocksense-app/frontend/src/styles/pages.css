@@ -2261,8 +2261,9 @@
 
 /* ── LEFT PANEL ─────────────────────────────────────────────────── */
 .chat-lpanel {
-  width: 380px;
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 0;
+  max-width: 50%;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border);
@@ -2390,7 +2391,7 @@
 
 /* ── Chart area ─────────────────────────────────────────────────── */
 .chat-chart-area {
-  height: 220px;
+  height: 300px;
   flex-shrink: 0;
   padding: 0 10px 8px;
   position: relative;
@@ -2708,9 +2709,10 @@
 /* ── RIGHT PANEL ────────────────────────────────────────────────── */
 .chat-rpanel {
   flex: 1;
+  min-width: 0;
+  max-width: 50%;
   display: flex;
   flex-direction: column;
-  min-width: 0;
   overflow: hidden;
   background: var(--bg-app);
 }
@@ -3302,13 +3304,18 @@
 
   .chat-lpanel {
     width: 100%;
+    max-width: 100%;
     border-right: none;
     border-bottom: 1px solid var(--border);
     max-height: 55vh;
   }
 
+  .chat-rpanel {
+    max-width: 100%;
+  }
+
   .chat-chart-area {
-    height: 180px;
+    height: 200px;
   }
 
   .chat-mode-nav {
