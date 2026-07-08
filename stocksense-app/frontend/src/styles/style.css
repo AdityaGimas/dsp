@@ -73,7 +73,7 @@ body{font-family:var(--font-body);background:var(--bg-app);color:var(--text-prim
 .wl-remove-btn:hover{background:rgba(245,94,94,0.12);color:var(--red) !important}
 .wl-list{display:flex;flex-direction:column;gap:1px;max-height:240px;overflow-y:auto}
 /* MAIN */
-.main{flex:1;overflow-y:auto;display:flex;flex-direction:column}
+.main{flex:1;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column}
 /* SEARCH BAR */
 .search-bar{display:flex;align-items:center;gap:10px;padding:10px 20px;border-bottom:1px solid var(--border);background:var(--bg-sidebar);flex-shrink:0;flex-wrap:wrap}
 .search-label{font-size:11px;color:var(--text-muted);font-weight:500;white-space:nowrap}

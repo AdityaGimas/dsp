@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useApp } from "../context/AppContext.jsx"
 import { api } from "../api/client.js"
 import TickerSearchBar from "../components/TickerSearchBar.jsx"
@@ -19,6 +19,78 @@ const MODES = [
   { key: "news",      label: "📰 Berita",   desc: "Sentimen, katalis, berita emiten" },
   { key: "macro",     label: "🌍 Makro",    desc: "Suku bunga, inflasi, Rupiah, komoditas" },
 ]
+
+const CHAT_MODELS = [
+  { id: "meta-llama/llama-4-scout-17b-16e-instruct", name: "LLaMA-4 Scout",  color: "var(--purple)" },
+  { id: "llama-3.3-70b-versatile",                   name: "LLaMA 3.3 70B",  color: "var(--teal)"   },
+  { id: "llama-3.1-8b-instant",                      name: "LLaMA 3.1 8B",   color: "var(--blue)"   },
+  { id: "qwen-2.5-32b",                              name: "Qwen 2.5 32B",   color: "var(--amber)"  },
+  { id: "gemma2-9b-it",                              name: "Gemma2 9B",      color: "var(--green)"  },
+]
+
+function ModelPicker({ value, onChange }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const current = CHAT_MODELS.find(m => m.id === value) || CHAT_MODELS[0]
+
+  useEffect(() => {
+    function onOutside(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener("mousedown", onOutside)
+    return () => document.removeEventListener("mousedown", onOutside)
+  }, [])
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display: "flex", alignItems: "center", gap: 6,
+          background: "transparent", border: "none",
+          padding: 0, cursor: "pointer", transition: "all 0.2s",
+        }}
+      >
+        <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)", whiteSpace: "nowrap" }}>{current.name}</span>
+        <span style={{ fontSize: 8, color: "var(--text-muted)", marginLeft: 2, opacity: 0.7 }}>{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div style={{
+          position: "absolute", bottom: "calc(100% + 12px)", right: 0,
+          background: "var(--bg-card)", border: "1px solid var(--border-light)",
+          borderRadius: 8, padding: "6px", minWidth: 200,
+          boxShadow: "0 12px 40px rgba(0,0,0,0.6)",
+          zIndex: 999, display: "flex", flexDirection: "column", gap: 2,
+        }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600, padding: "4px 8px 6px" }}>Pilih Model AI</div>
+          {CHAT_MODELS.map(m => (
+            <button
+              key={m.id}
+              onClick={() => { onChange(m.id); setOpen(false) }}
+              style={{
+                display: "flex", alignItems: "center", gap: 10,
+                background: value === m.id ? "rgba(255,255,255,0.06)" : "transparent",
+                border: "none",
+                borderRadius: 6, padding: "8px 10px",
+                cursor: "pointer", textAlign: "left", transition: "all 0.15s",
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
+              onMouseLeave={e => e.currentTarget.style.background = value === m.id ? "rgba(255,255,255,0.06)" : "transparent"}
+            >
+              <div style={{
+                background: m.color,
+                borderRadius: "50%", width: 8, height: 8,
+                flexShrink: 0, boxShadow: `0 0 8px ${m.color}88`
+              }} />
+              <div style={{ fontSize: 13, fontWeight: value === m.id ? 600 : 400, color: value === m.id ? "var(--text-primary)" : "var(--text-secondary)" }}>
+                {m.name}
+              </div>
+              {value === m.id && <span style={{ marginLeft: "auto", color: "var(--text-muted)", fontSize: 13 }}>✓</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 const QUICK_PROMPTS = {
   general: [
@@ -374,6 +446,7 @@ export default function ChatAI() {
   const [err, setErr] = useState("")
   const [stockCtx, setStockCtx] = useState(null)
   const [mode, setMode] = useState("general")
+  const [chatModel, setChatModel] = useState("meta-llama/llama-4-scout-17b-16e-instruct")
   const [period, setPeriod] = useState("3mo")
   const [histData, setHistData] = useState(null)
   const [histLoading, setHistLoading] = useState(false)
@@ -482,6 +555,7 @@ export default function ChatAI() {
         messages: next.map(m => ({ role: m.role, content: m.content || "", image: m.image })),
         stock_context: fullCtx || undefined,
         mode,
+        model: chatModel,
       })
       setMessages(cur => [...cur, { role: "assistant", content: res.reply || "(kosong)", ts: Date.now() }])
     } catch (e) {
@@ -522,7 +596,7 @@ export default function ChatAI() {
             <div className="chat-hdr-avatar">🤖</div>
             <div>
               <div className="chat-hdr-name">StockSense AI Advisor</div>
-              <div className="chat-hdr-sub">LLaMA-4 Scout · IDX Specialist</div>
+              <div className="chat-hdr-sub">AI Advisor · IDX Specialist</div>
             </div>
           </div>
 
@@ -781,11 +855,13 @@ export default function ChatAI() {
                   {busy ? "⋯" : "➤"}
                 </button>
               </div>
-              <div className="chat-input-hint">
-                {stockCtx?.ticker
-                  ? code + " · " + (MODES.find(m => m.key === mode)?.label || mode) + " · " + (TIMEFRAMES.find(t => t.value === period)?.label || period)
-                  : "Pilih saham untuk analisis berbasis data real-time"
-                }
+              <div className="chat-input-hint" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>
+                  {stockCtx?.ticker
+                    ? code + " · " + (MODES.find(m => m.key === mode)?.label || mode) + " · " + (TIMEFRAMES.find(t => t.value === period)?.label || period)
+                    : "Pilih saham untuk analisis berbasis data real-time"}
+                </span>
+                <ModelPicker value={chatModel} onChange={setChatModel} />
               </div>
             </div>
 

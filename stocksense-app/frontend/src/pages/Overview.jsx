@@ -648,7 +648,7 @@ export default function Overview() {
     return { positive_pct: pos_pct, neutral_pct: neu_pct, negative_pct: neg_pct, score, overall, overall_label }
   }, [news])
 
-  // Qwen3 32B stats — dihitung client-side dari articles
+  // Qwen stats — dihitung client-side dari articles
   const llm2Summary = useMemo(() => {
     if (!news || !news.articles || !news.articles.length)
       return { positive_pct: 0, neutral_pct: 0, negative_pct: 0, score: 0, overall: "neutral", overall_label: "Netral" }
@@ -737,12 +737,12 @@ export default function Overview() {
             <div className="kpi-sent-legend"><span className="kpi-dist-lbl">Distribusi:</span><span className="pos">Positif <b>{bertSummary.positive_pct}%</b></span><span className="neu">Netral <b>{bertSummary.neutral_pct}%</b></span><span className="neg">Negatif <b>{bertSummary.negative_pct}%</b></span></div>
           </div>
           <div className="kpi-detail-grp">
-            <div className="kpi-detail-grp-h">Llama 3.3 70B (Groq)</div>
+            <div className="kpi-detail-grp-h">Llama (Groq)</div>
             <div className="kpi-sentbar"><i className="kpi-sent-pos" style={lp} /><i className="kpi-sent-net" style={lnt} /><i className="kpi-sent-neg" style={lng} /></div>
             <div className="kpi-sent-legend"><span className="kpi-dist-lbl">Distribusi:</span><span className="pos">Positif <b>{llmSummary.positive_pct}%</b></span><span className="neu">Netral <b>{llmSummary.neutral_pct}%</b></span><span className="neg">Negatif <b>{llmSummary.negative_pct}%</b></span></div>
           </div>
           <div className="kpi-detail-grp">
-            <div className="kpi-detail-grp-h">Qwen3 32B (Groq)</div>
+            <div className="kpi-detail-grp-h">Qwen (Groq)</div>
             <div className="kpi-sentbar"><i className="kpi-sent-pos" style={l2p} /><i className="kpi-sent-net" style={l2nt} /><i className="kpi-sent-neg" style={l2ng} /></div>
             <div className="kpi-sent-legend"><span className="kpi-dist-lbl">Distribusi:</span><span className="pos">Positif <b>{llm2Summary.positive_pct}%</b></span><span className="neu">Netral <b>{llm2Summary.neutral_pct}%</b></span><span className="neg">Negatif <b>{llm2Summary.negative_pct}%</b></span></div>
           </div>
@@ -1742,8 +1742,8 @@ function renderSentiment(news, err, busy, aiSummary, sentModel, setSentModel, be
 
       {sentModel === "compare" && renderComparison()}
       {sentModel === "bert" && renderSingleModel(bertSummary, "Model sentimen IndoBERT")}
-      {sentModel === "llm" && renderSingleModel(llmSummary, "Model sentimen Llama 3.3 70B")}
-      {sentModel === "llm2" && renderSingleModel(llm2Summary, "Model sentimen Qwen3 32B")}
+      {sentModel === "llm" && renderSingleModel(llmSummary, "Model sentimen Llama")}
+      {sentModel === "llm2" && renderSingleModel(llm2Summary, "Model sentimen Qwen")}
 
       <div className="ai-box" style={{ marginTop: 16 }}>
         <div className="ai-lbl"><span>✦</span> Ringkasan Groq AI</div>

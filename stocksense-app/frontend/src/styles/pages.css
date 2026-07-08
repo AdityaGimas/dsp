@@ -1,4 +1,4 @@
-﻿/* ===== Page-specific styles (Forecasting, Indikator, Berita, Makro) ===== */
+/* ===== Page-specific styles (Forecasting, Indikator, Berita, Makro) ===== */
 
 /* ---- shared layout helpers ---- */
 .row-2 {
@@ -2259,7 +2259,7 @@
 
 /* ── LEFT PANEL ─────────────────────────────────────────────────── */
 .chat-lpanel {
-  width: 310px;
+  width: 380px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;

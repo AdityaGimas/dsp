@@ -2,7 +2,7 @@
 // (IndoBERT + Groq #1 + Groq #2). Semua style memakai referensi objek single-brace.
 import { Fragment } from "react"
 
-export const MODEL_NAME = { bert: "IndoBERT", llm: "Llama 3.3 70B", llm2: "Qwen3 32B" }
+export const MODEL_NAME = { bert: "IndoBERT", llm: "Llama", llm2: "Qwen" }
 export const MODEL_KEYS3 = ["bert", "llm", "llm2"]
 export const MODEL_ACCENT = { bert: "var(--blue)", llm: "var(--purple)", llm2: "var(--teal)" }
 
@@ -159,8 +159,8 @@ const S = {
 export function SentModelToggle({ value, onChange }) {
   const opts = [
     { id: "bert", label: "IndoBERT" },
-    { id: "llm", label: "Llama 3.3 70B" },
-    { id: "llm2", label: "Qwen3 32B" },
+    { id: "llm", label: "Llama" },
+    { id: "llm2", label: "Qwen" },
     { id: "both", label: "Semua" },
   ]
   return (
@@ -224,7 +224,7 @@ function CompareRow3({ label, pcts, color }) {
       <div style={S.cr3Head}>
         <span style={S.cr3Label}>{label}</span>
         <span style={S.cr3Nums}>
-          IndoBERT {pcts.bert}% · Llama 3.3 {pcts.llm}% · Qwen3 {pcts.llm2}%
+          IndoBERT {pcts.bert}% · Llama {pcts.llm}% · Qwen {pcts.llm2}%
         </span>
       </div>
       {MODEL_KEYS3.map((mk) => (
@@ -285,8 +285,8 @@ export function SentCompare({ stats }) {
 export function ArticleBadges({ a, meta }) {
   const rows = [
     { name: "IndoBERT", m: meta[a.sentiment] || meta.neutral, score: a.score },
-    { name: "Llama 3.3", m: meta[a.llm_sentiment] || meta.neutral, score: a.llm_score },
-    { name: "Qwen3", m: meta[a.llm2_sentiment] || meta.neutral, score: a.llm2_score },
+    { name: "Llama", m: meta[a.llm_sentiment] || meta.neutral, score: a.llm_score },
+    { name: "Qwen", m: meta[a.llm2_sentiment] || meta.neutral, score: a.llm2_score },
   ]
   return (
     <div style={S.badgeCol}>
@@ -304,8 +304,8 @@ export function ArticleBadges({ a, meta }) {
 export function DistToggle({ value, onChange }) {
   const opts = [
     { id: "bert", label: "IndoBERT", color: "var(--blue)", bg: "rgba(96,165,250,0.18)" },
-    { id: "llm", label: "Llama 3.3 70B", color: "var(--purple)", bg: "rgba(167,139,250,0.18)" },
-    { id: "llm2", label: "Qwen3 32B", color: "var(--teal)", bg: "rgba(45,212,191,0.18)" },
+    { id: "llm", label: "Llama", color: "var(--purple)", bg: "rgba(167,139,250,0.18)" },
+    { id: "llm2", label: "Qwen", color: "var(--teal)", bg: "rgba(45,212,191,0.18)" },
   ]
   return (
     <div style={S.distTogWrap}>
@@ -341,7 +341,7 @@ export function SentDistribution({ distModel, stats }) {
 }
 
 
-export const OV_MODEL_NAME = { bert: "IndoBERT", llm: "Llama 3.3 70B", llm2: "Qwen3 32B" }
+export const OV_MODEL_NAME = { bert: "IndoBERT", llm: "Llama", llm2: "Qwen" }
 
 function ovColor(o) {
   return o === "positive" ? "var(--green)" : o === "negative" ? "var(--red)" : "var(--amber)"
@@ -353,29 +353,27 @@ function ovBg(o) {
       ? "rgba(245,94,94,0.1)"
       : "rgba(245,183,49,0.1)"
 }
-function ovCircle(o) {
+function ovBadge(o) {
   return {
     background: ovBg(o),
     borderColor: ovColor(o) + "55",
-    width: "auto",
-    height: "auto",
     padding: "5px 14px",
     borderRadius: 999,
     borderWidth: 1.5,
+    borderStyle: "solid"
   }
 }
 function ovNum(o) {
   return { color: ovColor(o), fontSize: 13, fontFamily: "var(--font-body)" }
 }
-function ovConsCircle(color) {
+function ovConsBadge(color) {
   return {
     background: "rgba(255,255,255,0.04)",
     borderColor: color + "66",
-    width: "auto",
-    height: "auto",
     padding: "5px 14px",
     borderRadius: 999,
     borderWidth: 1.5,
+    borderStyle: "solid"
   }
 }
 function ovNum2(color) {
@@ -394,7 +392,7 @@ const OS = {
     borderBottom: "1px solid var(--border-light)",
     marginBottom: 14,
   },
-  rowDuo: { display: "flex", justifyContent: "center", gap: 48, width: "100%", flexWrap: "wrap" },
+  rowTrio: { display: "flex", justifyContent: "center", gap: 16, width: "100%", flexWrap: "wrap" },
   hr: { height: 1, background: "var(--border-light)", width: "100%" },
   cell: { display: "flex", flexDirection: "column", alignItems: "center", gap: 8 },
   cellName: { fontSize: 11, color: "var(--text-secondary)", fontWeight: 600, textAlign: "center" },
@@ -405,8 +403,8 @@ export function OvSentTabs({ value, onChange }) {
   const tabs = [
     { id: "compare", label: "Overview" },
     { id: "bert", label: "IndoBERT" },
-    { id: "llm", label: "Llama 3.3 70B" },
-    { id: "llm2", label: "Qwen3 32B" },
+    { id: "llm", label: "Llama" },
+    { id: "llm2", label: "Qwen" },
   ]
   return (
     <div className="tab-group" style={OS.tabGroup}>
@@ -474,7 +472,7 @@ function OvModelCell({ name, model }) {
   return (
     <div style={OS.cell}>
       <div style={OS.cellName}>{name}</div>
-      <div className="sent-circle" style={ovCircle(model.overall)}>
+      <div className="sent-badge" style={ovBadge(model.overall)}>
         <span className="sent-num" style={ovNum(model.overall)}>
           {model.overall_label || "Netral"}
         </span>
@@ -494,16 +492,15 @@ export function OvCompare({ bert, llm, llm2 }) {
   return (
     <>
       <div style={OS.cmpTop}>
-        <OvModelCell name={OV_MODEL_NAME.bert} model={bert} />
-        <div style={OS.hr} />
-        <div style={OS.rowDuo}>
+        <div style={OS.rowTrio}>
+          <OvModelCell name={OV_MODEL_NAME.bert} model={bert} />
           <OvModelCell name={OV_MODEL_NAME.llm} model={llm} />
           <OvModelCell name={OV_MODEL_NAME.llm2} model={llm2} />
         </div>
         <div style={OS.hr} />
         <div style={OS.cell}>
           <div style={OS.cellName}>Konsensus</div>
-          <div className="sent-circle" style={ovConsCircle(consColor)}>
+          <div className="sent-badge" style={ovConsBadge(consColor)}>
             <span className="sent-num" style={ovNum2(consColor)}>
               {cons.agree + "/" + cons.total}
             </span>

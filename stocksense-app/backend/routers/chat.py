@@ -1,4 +1,4 @@
-﻿"""Chat AI endpoint â€” AI Advisor Manajemen Saham IDX via Groq.
+"""Chat AI endpoint â€” AI Advisor Manajemen Saham IDX via Groq.
 Dilengkapi dengan konteks grafik harga, mode analisis, dan format Markdown.
 Memakai ulang rotasi multi-API-key & penanganan limit dari grok.py."""
 from fastapi import APIRouter, HTTPException
@@ -35,6 +35,7 @@ class ChatReq(BaseModel):
     stock_context: Optional[dict] = None
     mode: Optional[str] = "general"  # general | technical | news | macro
     api_key: Optional[str] = None
+    model: Optional[str] = None
 
 
 def _rsi_interpretation(rsi: float) -> str:
@@ -234,11 +235,14 @@ async def chat(req: ChatReq):
     groq_messages = [{"role": "system", "content": _system_prompt(req.stock_context, mode)}]
     groq_messages += [_to_groq_message(m) for m in req.messages]
 
+    # Gunakan model pilihan user atau fallback ke CHAT_MODEL bawaan
+    model_to_use = req.model if req.model else CHAT_MODEL
+
     res = await groq_chat_rotate(
-        groq_messages, CHAT_MODEL, max_tokens=1536, api_key=req.api_key
+        groq_messages, model_to_use, max_tokens=1536, api_key=req.api_key
     )
     try:
         reply = res["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError):
         reply = ""
-    return {"reply": reply, "model": CHAT_MODEL}
+    return {"reply": reply, "model": model_to_use}
