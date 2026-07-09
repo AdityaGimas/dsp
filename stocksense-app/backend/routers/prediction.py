@@ -42,9 +42,10 @@ def get_prediction(ticker: str):
         raise HTTPException(status_code=500, detail="Library 'xgboost' belum diinstal di backend. Silakan jalankan 'pip install xgboost scikit-learn'.")
 
     try:
+        print(f"[prediction v2-return] REQUEST ticker={ticker}", flush=True)
         # 1. Fetch Data
         t = yf.Ticker(ticker)
-        df = t.history(period="2y")
+        df = t.history(period="2y", auto_adjust=True)
         if df.empty or len(df) < 50:
             raise ValueError("Data historis tidak cukup untuk training model.")
 
@@ -67,14 +68,28 @@ def get_prediction(ticker: str):
         df['Return_3d'] = df['Close'].pct_change(3)
         df['Volatility'] = df['Return_1d'].rolling(10).std()
 
+        # --- Fitur RELATIF (stasioner) supaya model tidak bergantung pada level
+        #     harga absolut. Ini mencegah prediksi "nyangkut" di rentang harga lama
+        #     saat harga menembus level terendah/tertinggi baru. ---
+        df['Close_SMA7_ratio']  = df['Close'] / df['SMA_7'] - 1
+        df['Close_SMA21_ratio'] = df['Close'] / df['SMA_21'] - 1
+        df['SMA7_SMA21_ratio']  = df['SMA_7'] / df['SMA_21'] - 1
+        df['BB_pct']            = (df['Close'] - df['BB_Low']) / (df['BB_High'] - df['BB_Low'])
+        df['MACD_norm']         = df['MACD'] / df['Close']
+        df['MACD_sig_norm']     = df['MACD_Signal'] / df['Close']
+        vol_ma = df['Volume'].rolling(20).mean()
+        df['Volume_ratio']      = df['Volume'] / vol_ma
+
+        df.replace([np.inf, -np.inf], np.nan, inplace=True)
         df.dropna(inplace=True)
 
         if len(df) < 30:
             raise ValueError("Data historis setelah feature engineering tidak cukup.")
 
-        features = ['Open', 'High', 'Low', 'Close', 'Volume', 'SMA_7', 'SMA_21',
-                    'RSI_14', 'MACD', 'MACD_Signal', 'BB_High', 'BB_Low',
-                    'Return_1d', 'Return_3d', 'Volatility']
+        # Fitur tanpa harga absolut -> semuanya rasio/indikator ternormalisasi.
+        features = ['RSI_14', 'MACD_norm', 'MACD_sig_norm', 'BB_pct',
+                    'Close_SMA7_ratio', 'Close_SMA21_ratio', 'SMA7_SMA21_ratio',
+                    'Return_1d', 'Return_3d', 'Volatility', 'Volume_ratio']
         X = df[features]
 
         # Estimate daily volatility for range calculation
@@ -87,8 +102,12 @@ def get_prediction(ticker: str):
 
         last_features = pd.DataFrame([X.iloc[-1].values], columns=features)
 
-        # 3. Training & Prediction — 3 trading days ahead
+        # 3. Training & Prediction — 3 trading days ahead.
+        #    TARGET = RETURN (persentase perubahan) n hari ke depan, BUKAN harga absolut.
+        #    Return bersifat stasioner (berpusat ~0) sehingga XGBoost tidak terkurung
+        #    di rentang harga lama dan prediksi selalu relatif terhadap harga sekarang.
         preds_prices = []
+        per_horizon_acc = []
         model_accuracy = 0.0
 
         actual_days = 0
@@ -100,14 +119,14 @@ def get_prediction(ticker: str):
                 continue
             actual_days += 1
 
-            df[f'Target_{actual_days}'] = df['Close'].shift(-actual_days)
-            train_df = df.dropna(subset=[f'Target_{actual_days}'])
+            df[f'Target_ret_{actual_days}'] = df['Close'].shift(-actual_days) / df['Close'] - 1.0
+            train_df = df.dropna(subset=[f'Target_ret_{actual_days}'])
 
             if len(train_df) < 20:
                 continue
 
             X_train = train_df[features]
-            y_train = train_df[f'Target_{actual_days}']
+            y_train = train_df[f'Target_ret_{actual_days}']
 
             model = XGBRegressor(
                 n_estimators=150,
@@ -120,14 +139,23 @@ def get_prediction(ticker: str):
             )
             model.fit(X_train, y_train)
 
+            # Validasi MAPE berbasis HARGA (rekonstruksi dari return) agar akurasi
+            # tetap sebanding dengan versi sebelumnya.
             split = int(len(train_df) * 0.8)
-            y_test = y_train.iloc[split:]
-            y_pred_test = model.predict(X_train.iloc[split:])
-            mape = np.mean(np.abs((y_test - y_pred_test) / y_test)) * 100
-            model_accuracy += (100 - mape)
+            X_val      = X_train.iloc[split:]
+            close_val  = train_df['Close'].iloc[split:]
+            y_val_ret  = y_train.iloc[split:]
+            pred_val_ret = model.predict(X_val)
+            actual_val_price = close_val * (1.0 + y_val_ret)
+            pred_val_price   = close_val * (1.0 + pred_val_ret)
+            mape = np.mean(np.abs((actual_val_price - pred_val_price) / actual_val_price)) * 100
+            acc_h = max(0.0, 100.0 - mape)
+            model_accuracy += acc_h
 
-            pred = model.predict(last_features)[0]
-            preds_prices.append((loop_date, float(pred)))
+            pred_ret = float(model.predict(last_features)[0])
+            pred_price = base_price * (1.0 + pred_ret)
+            preds_prices.append((loop_date, float(pred_price)))
+            per_horizon_acc.append(acc_h)
 
         if len(preds_prices) > 0:
             model_accuracy = round(model_accuracy / len(preds_prices), 2)
@@ -142,14 +170,17 @@ def get_prediction(ticker: str):
             change = p_price - prev_p
             change_pct = (change / prev_p) * 100
 
-            # Range widens with time horizon — 1σ for day1, 1.5σ for day2, 2σ for day3
+            # Range widens with time horizon — 1sigma for day1, 1.5sigma for day2, 2sigma for day3
             sigma_mult = 1.0 + i * 0.5
             daily_range = p_price * daily_volatility * sigma_mult
             price_low  = round(p_price - daily_range, 0) if p_price > 1000 else round(p_price - daily_range, 2)
             price_high = round(p_price + daily_range, 0) if p_price > 1000 else round(p_price + daily_range, 2)
 
-            # Confidence decreases further out
-            conf = round(confidence_base - (i * 0.04), 2)
+            # Confidence per horizon: diturunkan dari akurasi validasi (100 - MAPE)
+            # horizon ybs. Horizon lebih jauh biasanya MAPE lebih besar -> conf turun
+            # secara alami (data-driven), bukan pengurangan tetap. Clamp sbg pengaman.
+            acc_i = per_horizon_acc[i] if i < len(per_horizon_acc) else model_accuracy
+            conf = round(min(max(acc_i / 100.0, 0.45), 0.95), 2)
 
             predictions_out.append(PredictionDay(
                 date=str(p_date),
@@ -180,9 +211,11 @@ def get_prediction(ticker: str):
         target_price = base_price * (1 + max(total_expected_return/100, 0.03)) if recommendation == "BUY" else base_price * 0.95
         stop_loss = base_price * 0.95 if recommendation == "BUY" else base_price * 1.05
 
+        print(f"[prediction v2-return] {ticker} base={base_price:.2f} preds={[round(p[1], 2) for p in preds_prices]} acc={model_accuracy}", flush=True)
+
         return PredictionResponse(
             ticker=ticker,
-            model_name="XGBoost",
+            model_name="XGBoost v2 (return)",
             model_accuracy=model_accuracy,
             predictions=predictions_out,
             recommendation=recommendation,

@@ -112,6 +112,7 @@ def save_prediction(ticker, base_price, xgb, llm, pred_date=None):
     """
     _ensure()
     pred_date = pred_date or _today()
+    today = _today()
     now = datetime.datetime.now().isoformat(timespec="seconds")
     xgb = xgb or {}
     llm = llm or {}
@@ -152,9 +153,16 @@ def save_prediction(ticker, base_price, xgb, llm, pred_date=None):
                         (ticker, model, td),
                     ).fetchone()
                     if row is not None:
-                        # KEEP-FIRST penuh: begitu (ticker, model, target_date) tersimpan,
-                        # nilainya TIDAK pernah ditimpa lagi (termasuk oleh run hari ini).
-                        # Prediksi hanya digenerate untuk tanggal target yang BELUM ada.
+                        # Tanggal target yang sudah LEWAT dibekukan (keep-first) demi kejujuran
+                        # evaluasi akurasi; tanggal target MASA DEPAN diperbarui dgn nilai terbaru
+                        # supaya isi DB selalu cocok dengan yang ditampilkan di UI.
+                        if td < today:
+                            continue
+                        conn.execute(
+                            "UPDATE prediction_points SET pred_date=?, horizon=?, base_price=?, predicted_price=?, predicted_low=?, predicted_high=? WHERE ticker=? AND model=? AND target_date=?",
+                            (pred_date, pt.get("horizon"), base_price, pt.get("price"), pt.get("low"), pt.get("high"), ticker, model, td),
+                        )
+                        updated += 1
                         continue
                     conn.execute(
                         """

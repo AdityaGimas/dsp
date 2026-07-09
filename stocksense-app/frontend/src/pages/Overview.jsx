@@ -278,8 +278,8 @@ export default function Overview() {
   // Backend akan overwrite kalau dibuat hari ini, dan keep-first utk hari lalu.
   const predSavedRef = useRef("")
   useEffect(() => {
-    if (!mlPred || !mlPred.predictions?.length) return
-    const xpts = mlPred.predictions.slice(0, 3)
+    if (!mlPredRaw || !mlPredRaw.predictions?.length) return
+    const xpts = mlPredRaw.predictions.slice(0, 3)
     const baseClose = hist.length ? hist[hist.length - 1].close : info?.current_price || 0
     if (!baseClose) return
 
@@ -287,21 +287,21 @@ export default function Overview() {
       ticker: currentTicker,
       base_price: baseClose,
       xgb: {
-        recommendation: mlPred.recommendation,
-        confidence: mlPred.confidence,
-        model_accuracy: mlPred.model_accuracy,
+        recommendation: mlPredRaw.recommendation,
+        confidence: mlPredRaw.confidence,
+        model_accuracy: mlPredRaw.model_accuracy,
         points: xpts.map((p, i) => ({
           horizon: i + 1, date: p.date, price: p.price, low: p.price_low, high: p.price_high,
         })),
       },
     }
-    if (groqTech) {
-      const lp = [groqTech.price_tomorrow, groqTech.day2_price, groqTech.day3_price]
-      const ll = [groqTech.price_tomorrow_low, groqTech.day2_low, groqTech.day3_low]
-      const lh = [groqTech.price_tomorrow_high, groqTech.day2_high, groqTech.day3_high]
+    if (groqTechRaw) {
+      const lp = [groqTechRaw.price_tomorrow, groqTechRaw.day2_price, groqTechRaw.day3_price]
+      const ll = [groqTechRaw.price_tomorrow_low, groqTechRaw.day2_low, groqTechRaw.day3_low]
+      const lh = [groqTechRaw.price_tomorrow_high, groqTechRaw.day2_high, groqTechRaw.day3_high]
       payload.llm = {
-        recommendation: groqTech.recommendation,
-        confidence: groqTech.confidence,
+        recommendation: groqTechRaw.recommendation,
+        confidence: groqTechRaw.confidence,
         points: xpts
           .map((p, i) => ({ horizon: i + 1, date: p.date, price: lp[i], low: ll[i], high: lh[i] }))
           .filter((pt) => pt.price != null),
@@ -310,9 +310,9 @@ export default function Overview() {
     const sig = JSON.stringify(payload)
     if (predSavedRef.current === sig) return
     predSavedRef.current = sig
-    api.savePredictionHistory(payload).catch(() => {})
+    api.savePredictionHistory(payload).then(() => api.getPredictionHistory(currentTicker, 400)).then((d) => setPredHist(d && d.history ? d.history : [])).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mlPred, groqTech, hist, info, currentTicker])
+  }, [mlPredRaw, groqTechRaw, hist, info, currentTicker])
 
   // Refresh manual: ambil ulang data pasar inti (info, indikator, prediksi,
   // chart, makro) dengan menembus cache server (refresh=true).
@@ -771,6 +771,35 @@ export default function Overview() {
   }, [news])
 
   const ov = indicators?.overall || {}
+  const chartKey = currentTicker + ":" + (mlPred?.predictions?.length || 0) + ":" + (groqTech?.price_tomorrow ? "l" : "n") + ":" + ((predHist || []).length)
+  // Akurasi historis per model (dihitung dari riwayat yg sudah ada harga aktualnya).
+  const histAccFor = (key) => {
+    let n = 0, mapeSum = 0, dirHits = 0, dirTot = 0
+    ;(predHist || []).forEach((h) => {
+      const pt = h && h[key]
+      if (!pt || pt.actual_price == null || pt.error_pct == null) return
+      n += 1
+      mapeSum += Math.abs(pt.error_pct)
+      if (pt.direction_hit != null) { dirTot += 1; if (pt.direction_hit) dirHits += 1 }
+    })
+    return { count: n, accuracy: n ? Math.max(0, 100 - mapeSum / n) : null, dirRate: dirTot ? (dirHits / dirTot) * 100 : null }
+  }
+  const accXgbHist = histAccFor("xgb")
+  const accLlmHist = histAccFor("llm")
+  // Kalau XGBoost & LLM beda rekomendasi, pilih model dgn akurasi historis lebih tinggi.
+  const recDiffer = !!(mlPred && groqTech && mlPred.recommendation !== groqTech.recommendation)
+  const bestModel = (() => {
+    if (!recDiffer) return null
+    const ax = accXgbHist.accuracy, al = accLlmHist.accuracy
+    const hx = Number.isFinite(ax), hl = Number.isFinite(al)
+    if (!hx && !hl) return null
+    if (hx && !hl) return "xgb"
+    if (hl && !hx) return "llm"
+    if (ax === al) return null
+    return ax > al ? "xgb" : "llm"
+  })()
+  const showSingleRec = !!(mlPred && groqTech && (!recDiffer || bestModel))
+  const singleRec = bestModel === "llm" ? groqTech?.recommendation : mlPred?.recommendation
   const mlFirst = mlPred?.predictions?.[0]
   const pos = info ? info.change_pct >= 0 : true
   const predSubColor = mlFirst && mlFirst.change_pct >= 0 ? S.green : S.red
@@ -993,9 +1022,9 @@ export default function Overview() {
             <div className="kpi-label">Prediksi XGB vs LLM (Besok)</div>
             <div className="kpi-val">
               {mlPred && groqTech ? (
-                mlPred.recommendation === groqTech.recommendation ? (
+                showSingleRec ? (
                   <span style={{ color: indColor(recLabel(mlPred.recommendation)) }}>
-                    {recLabel(mlPred.recommendation)}
+                    {(bestModel ? (bestModel === "xgb" ? "XGB: " : "LLM: ") : "") + recLabel(singleRec)}
                   </span>
                 ) : (
                   <span style={{ fontSize: "0.8em" }}>
@@ -1015,7 +1044,7 @@ export default function Overview() {
               )}
             </div>
             <div className="kpi-sub">
-              {mlPred && groqTech ? (mlPred.recommendation === groqTech.recommendation ? "Kedua model AI sepakat memberikan rekomendasi arah yang sama." : "Terdapat perbedaan prediksi antara model XGBoost dan LLM.") : "—"}
+              {mlPred && groqTech ? (!recDiffer ? "Kedua model AI sepakat memberikan rekomendasi arah yang sama." : bestModel ? ("Kedua model berbeda arah — ditampilkan " + (bestModel === "xgb" ? "XGBoost" : "LLM") + " karena akurasi historisnya lebih baik.") : "Kedua model berbeda arah; belum ada cukup data akurasi historis untuk memilih, jadi keduanya ditampilkan.") : "—"}
             </div>
           </div>
 
@@ -1131,7 +1160,7 @@ export default function Overview() {
               </div>
               <div className="card-body">
                 <div className="chart-wrap">
-                  <Line data={chartData} options={chartOptions} plugins={[ovRangeBandPlugin]} />
+                  <Line key={chartKey} data={chartData} options={chartOptions} plugins={[ovRangeBandPlugin]} />
                 </div>
               </div>
             </div>
@@ -1516,6 +1545,9 @@ function renderPredGrid(ml, grok, info) {
               </div>
             )}
             <div className="pred-chg" style={chgStyle}>{(up ? "+" : "") + p.change_pct.toFixed(2) + "%"}</div>
+            {p.confidence != null && (
+              <div style={confStyle}>Conf {Math.round(p.confidence * 100)}%</div>
+            )}
           </div>
 
           {gPrice ? (

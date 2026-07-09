@@ -122,11 +122,24 @@ export default function Forecasting() {
   const [xgbPredRaw, setXgbPredRaw] = useState(null)
   const [llmPredRaw, setLlmPredRaw] = useState(null)
   const [busy, setBusy] = useState(false)
-  const [activeModel, setActiveModel] = useState("both") // "xgb" | "llm" | "both"
+  const [activeModel, setActiveModel] = useState("xgb") // "xgb" | "llm" | "both"
   const [histPeriod, setHistPeriod] = useState("3mo")
   const [predHistory, setPredHistory] = useState(null)
   const [histLoading, setHistLoading] = useState(false)
   const savedRef = useRef("")
+  const userToggledRef = useRef(false)
+
+  // Default tampilkan XGBoost dulu (line hijau instan); reset tiap ganti saham.
+  useEffect(() => {
+    setActiveModel("xgb")
+    userToggledRef.current = false
+  }, [currentTicker])
+
+  // Begitu prediksi LLM siap, otomatis tampilkan kedua model
+  // (kecuali user sudah memilih model secara manual).
+  useEffect(() => {
+    if (llmPredRaw && !userToggledRef.current) setActiveModel("both")
+  }, [llmPredRaw])
 
   // Prediksi DB-first: tiap tanggal target yang sudah ada di database dipakai dari
   // DB (stabil); hanya tanggal yang belum ada yang memakai hasil generate baru.
@@ -232,6 +245,9 @@ export default function Forecasting() {
 
   const lastClose = hist.length ? hist[hist.length - 1].close : 0
   const xgbPreds = xgbPred?.predictions || []
+  // Paksa grafik mount ulang saat data prediksi baru tersedia / model berubah,
+  // supaya dataset line prediksi langsung tergambar tanpa perlu reload manual.
+  const chartKey = currentTicker + ":" + xgbPreds.length + ":" + (llmPred ? "l" : "n") + ":" + activeModel
   const xgbFinal = xgbPreds[xgbPreds.length - 1]
   const xgbPct = xgbFinal && lastClose ? ((xgbFinal.price - lastClose) / lastClose) * 100 : 0
   const llmFinal3dPrice = llmPred?.day3_price || llmPred?.price_tomorrow || null
@@ -441,35 +457,36 @@ export default function Forecasting() {
 
   // Auto-simpan begitu prediksi XGBoost & LLM (asli, bukan mock) siap.
   useEffect(() => {
-    if (!xgbPred || !llmPred) return
-    if (xgbPred._mock || llmPred._mock) return
+    if (!xgbPredRaw || !llmPredRaw) return
+    if (xgbPredRaw._mock || llmPredRaw._mock) return
     if (!lastClose) return
     const key = currentTicker + ":" + (xgbPreds[0]?.date || "")
     if (savedRef.current === key) return
     savedRef.current = key
 
+    const llmDaysRaw = llmPredRaw ? [{ date: xgbPredRaw?.predictions?.[0]?.date, price: llmPredRaw.price_tomorrow, low: llmPredRaw.price_tomorrow_low, high: llmPredRaw.price_tomorrow_high }, { date: xgbPredRaw?.predictions?.[1]?.date, price: llmPredRaw.day2_price, low: llmPredRaw.day2_low, high: llmPredRaw.day2_high }, { date: xgbPredRaw?.predictions?.[2]?.date, price: llmPredRaw.day3_price, low: llmPredRaw.day3_low, high: llmPredRaw.day3_high }] : []
     const payload = {
       ticker: currentTicker,
       base_price: lastClose,
       xgb: {
-        recommendation: xgbPred.recommendation,
-        confidence: xgbPred.confidence,
-        model_accuracy: xgbPred.model_accuracy,
-        points: xgbPreds.slice(0, 3).map((pt, i) => ({
+        recommendation: xgbPredRaw.recommendation,
+        confidence: xgbPredRaw.confidence,
+        model_accuracy: xgbPredRaw.model_accuracy,
+        points: (xgbPredRaw?.predictions || []).slice(0, 3).map((pt, i) => ({
           horizon: i + 1, date: pt.date, price: pt.price, low: pt.price_low, high: pt.price_high,
         })),
       },
       llm: {
-        recommendation: llmPred.recommendation,
-        confidence: llmPred.confidence,
-        points: llmDays.map((pt, i) => ({
+        recommendation: llmPredRaw.recommendation,
+        confidence: llmPredRaw.confidence,
+        points: llmDaysRaw.map((pt, i) => ({
           horizon: i + 1, date: pt.date, price: pt.price, low: pt.low, high: pt.high,
         })),
       },
     }
     api.savePredictionHistory(payload).then(() => loadHistory()).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [xgbPred, llmPred, lastClose])
+  }, [xgbPredRaw, llmPredRaw, lastClose])
 
   return (
     <>
@@ -561,7 +578,7 @@ export default function Forecasting() {
                   <button
                     key={m.id}
                     className={"fc-mtog " + (activeModel === m.id ? "fc-mtog-active" : "")}
-                    onClick={() => setActiveModel(m.id)}
+                    onClick={() => { userToggledRef.current = true; setActiveModel(m.id) }}
                   >{m.lbl}</button>
                 ))}
               </div>
@@ -585,7 +602,7 @@ export default function Forecasting() {
           </div>
           <div className="card-body">
             <div className="chart-wrap" style={{ height: 300 }}>
-              <Line data={chartData} options={chartOptions} plugins={[rangeBandPlugin]} />
+              <Line key={chartKey} data={chartData} options={chartOptions} plugins={[rangeBandPlugin]} />
             </div>
           </div>
         </div>

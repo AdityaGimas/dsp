@@ -196,10 +196,9 @@ HARGA SAAT INI: Rp {req.current_price:,.0f}
 - Bollinger: {ind.get('bollinger_bands', {}).get('position', '?')}
 - Stochastic: {ind.get('stochastic', {}).get('value', '?')} - {ind.get('stochastic', {}).get('signal', '?')}
 - Volume Ratio: {ind.get('volume_ratio', {}).get('value', '?')}x
-- Referensi model ML: {ml.get('recommendation', '?')} (conf {round(ml.get('confidence', 0) * 100)}%)
 
 ATURAN WAJIB (ikuti dengan ketat):
-1. Hitung estimasi harga 3 hari ke depan dari DATA NYATA di atas. Sertakan rentang low-high realistis sesuai volatilitas. JANGAN menyalin angka contoh apa pun.
+1. Hitung estimasi harga 3 hari ke depan MURNI dari DATA TEKNIKAL NYATA di atas dan HARGA SAAT INI. Analisis ini harus INDEPENDEN - tidak ada referensi model lain. Estimasi harus wajar secara teknikal dan berlabuh di sekitar harga sekarang (pergerakan harian saham normal biasanya < 3-5%). Sertakan rentang low-high realistis sesuai volatilitas. JANGAN menyalin angka contoh apa pun.
 2. Tentukan arah: bandingkan day3_price terhadap harga sekarang (Rp {req.current_price:,.0f}).
 3. "recommendation" HARUS konsisten dengan arah itu:
    - day3_price > +1.5% dari harga sekarang  -> "BUY"
