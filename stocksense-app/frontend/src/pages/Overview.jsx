@@ -1239,7 +1239,7 @@ export default function Overview() {
                   <span className="btn-txt">{finalRecoBusy ? "Menganalisis..." : "▶ Minta AI Putuskan"}</span>
                 </button>
               </div>
-              <div className="card-body">{renderFinalReco(mlPred, groqTech, news, finalReco, finalRecoBusy, fetchFinalReco)}</div>
+              <div className="card-body">{renderFinalReco(mlPred, groqTech, news, finalReco, finalRecoBusy, fetchFinalReco, currentTicker, indicators, info)}</div>
             </div>
           </div>
 
@@ -1572,7 +1572,7 @@ function renderPredGrid(ml, grok, info) {
   return cells
 }
 
-function renderFinalReco(ml, grok, news, apiRes, busy, onGenerate) {
+function renderFinalReco(ml, grok, news, apiRes, busy, onGenerate, ticker, indicators, info) {
   if (busy) {
     return (
       <div className="loading-overlay" style={{ flexDirection: "column", gap: 10, padding: "24px 0" }}>
@@ -1729,6 +1729,8 @@ function renderFinalReco(ml, grok, news, apiRes, busy, onGenerate) {
         </div>
       )}
 
+
+
       {/* ── Per-factor analysis breakdown (only when AI analysis is available) ── */}
       {hasFactors && (
         <div className="factor-analysis-section">
@@ -1791,12 +1793,179 @@ function renderFinalReco(ml, grok, news, apiRes, busy, onGenerate) {
         </div>
       )}
 
+      {/* ── Support & Resistance ── */}
+      {(indicators?.bollinger_bands || (info && info.day_high && info.day_low)) && (() => {
+        const bbLower = indicators?.bollinger_bands?.lower || 0
+        const bbUpper = indicators?.bollinger_bands?.upper || 0
+        const bbMid   = indicators?.bollinger_bands?.middle || indicators?.bollinger_bands?.sma || 0
+        const curPrice = entry || ml?.predictions?.[0]?.price || info?.current_price || 0
+        const distToSup  = curPrice > 0 && bbLower > 0 ? (((curPrice - bbLower) / curPrice) * 100).toFixed(1) : null
+        const distToRes  = curPrice > 0 && bbUpper > 0 ? (((bbUpper - curPrice) / curPrice) * 100).toFixed(1) : null
+
+        // Pivot Points calculation
+        let calculatedSR = []
+        if (info && info.day_high && info.day_low && info.current_price) {
+          const H = info.day_high
+          const L = info.day_low
+          const C = info.current_price
+          const PP = (H + L + C) / 3
+          const R1 = (2 * PP) - L
+          const R2 = PP + (H - L)
+          const S1 = (2 * PP) - H
+          const S2 = PP - (H - L)
+          
+          calculatedSR = [
+            { label: "Resistance 2 (R2)", price: R2, color: "var(--red)", type: "res" },
+            { label: "Resistance 1 (R1)", price: R1, color: "var(--red)", type: "res" },
+            { label: "Pivot Point (PP)", price: PP, color: "var(--blue)", type: "pivot" },
+            { label: "Support 1 (S1)", price: S1, color: "var(--green)", type: "sup" },
+            { label: "Support 2 (S2)", price: S2, color: "var(--green)", type: "sup" },
+          ]
+        }
+
+        return (
+          <div className="sr-section">
+            <div className="sr-header">
+              <span className="sr-header-icon">📐</span>
+              <span>Peta Level Kunci (Support &amp; Resistance)</span>
+              <span className="sr-header-badge">Harian</span>
+            </div>
+
+            <div className="sr-columns">
+              {/* Bollinger Bands Column */}
+              {indicators?.bollinger_bands ? (
+                <div className="sr-column">
+                  <div className="sr-col-title">🛡️ Dinamis (Bollinger Bands)</div>
+                  <div className="sr-grid">
+                    {/* Support */}
+                    <div className="sr-card sr-support">
+                      <div className="sr-card-top">
+                        <span className="sr-card-label">Support</span>
+                        {distToSup !== null && (
+                          <span className="sr-card-dist sr-dist-sup">-{distToSup}%</span>
+                        )}
+                      </div>
+                      <div className="sr-card-val" style={{ color: "var(--green)" }}>{fmt(bbLower)}</div>
+                      <div className="sr-card-sub">BB Band Bawah</div>
+                      {bbLower > 0 && curPrice > 0 && (
+                        <div className="sr-bar-wrap">
+                          <div className="sr-bar sr-bar-sup" style={{ width: Math.min(100, Math.max(5, 100 - parseFloat(distToSup || 100))) + "%" }} />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Mid / SMA */}
+                    {bbMid > 0 && (
+                      <div className="sr-card sr-mid">
+                        <div className="sr-card-top">
+                          <span className="sr-card-label">SMA-20</span>
+                        </div>
+                        <div className="sr-card-val" style={{ color: "var(--amber)" }}>{fmt(bbMid)}</div>
+                        <div className="sr-card-sub">Moving Average</div>
+                      </div>
+                    )}
+
+                    {/* Resistance */}
+                    <div className="sr-card sr-resist">
+                      <div className="sr-card-top">
+                        <span className="sr-card-label">Resistance</span>
+                        {distToRes !== null && (
+                          <span className="sr-card-dist sr-dist-res">+{distToRes}%</span>
+                        )}
+                      </div>
+                      <div className="sr-card-val" style={{ color: "var(--red)" }}>{fmt(bbUpper)}</div>
+                      <div className="sr-card-sub">BB Band Atas</div>
+                      {bbUpper > 0 && curPrice > 0 && (
+                        <div className="sr-bar-wrap">
+                          <div className="sr-bar sr-bar-res" style={{ width: Math.min(100, Math.max(5, 100 - parseFloat(distToRes || 100))) + "%" }} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Price position indicator */}
+                  {curPrice > 0 && bbLower > 0 && bbUpper > 0 && (() => {
+                    const range = bbUpper - bbLower
+                    const pos = range > 0 ? Math.min(100, Math.max(0, ((curPrice - bbLower) / range) * 100)) : 50
+                    const zoneLabel = pos < 30 ? "⚡ Mendekati Support BB" : pos > 70 ? "⚠️ Mendekati Resistance BB" : "✅ Harga di tengah range BB"
+                    const zoneColor = pos < 30 ? "var(--green)" : pos > 70 ? "var(--red)" : "var(--amber)"
+                    return (
+                      <div className="sr-position-wrap">
+                        <div className="sr-position-label">Harga vs Range Bollinger Bands</div>
+                        <div className="sr-position-bar-track">
+                          <div className="sr-position-zone-sup" />
+                          <div className="sr-position-zone-mid" />
+                          <div className="sr-position-zone-res" />
+                          <div className="sr-position-marker" style={{ left: pos + "%" }}>
+                            <div className="sr-position-dot" style={{ background: zoneColor }} />
+                          </div>
+                        </div>
+                        <div className="sr-zone-note" style={{ color: zoneColor, marginTop: 4 }}>{zoneLabel}</div>
+                      </div>
+                    )
+                  })()}
+                </div>
+              ) : (
+                <div className="sr-column" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 140, color: "var(--text-muted)", fontSize: 11 }}>
+                  Menghitung Bollinger Bands...
+                </div>
+              )}
+
+              {/* Pivot Points Column */}
+              {calculatedSR.length > 0 ? (
+                <div className="sr-column">
+                  <div className="sr-col-title">🎯 Klasik (Pivot Points)</div>
+                  <div className="sr-pivot-list">
+                    {calculatedSR.map((lvl, idx) => {
+                      const dist = curPrice > 0 ? (((lvl.price - curPrice) / curPrice) * 100).toFixed(1) : null
+                      const distVal = parseFloat(dist || "0")
+                      const isAbove = distVal > 0
+                      const isZero = distVal === 0
+                      const badgeStyle = {
+                        color: isZero ? "var(--blue)" : isAbove ? "var(--red)" : "var(--green)",
+                        background: isZero ? "rgba(79,156,249,0.12)" : isAbove ? "rgba(245,94,94,0.12)" : "rgba(45,212,160,0.12)"
+                      }
+
+                      return (
+                        <div className="sr-pivot-item" key={idx} style={{
+                          borderLeft: `3px solid ${lvl.color}`,
+                          background: lvl.type === "pivot" ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.01)"
+                        }}>
+                          <span className="sr-pivot-lbl" style={{ color: lvl.type === "pivot" ? "var(--text-primary)" : "var(--text-secondary)" }}>
+                            {lvl.label}
+                          </span>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span className="sr-pivot-val" style={{ color: lvl.type === "pivot" ? "var(--blue)" : "var(--text-primary)" }}>
+                              {fmt(lvl.price)}
+                            </span>
+                            {dist !== null && (
+                              <span className="sr-pivot-dist" style={badgeStyle}>
+                                {isZero ? "Pivot" : (isAbove ? "+" : "") + dist + "%"}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="sr-column" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 140, color: "var(--text-muted)", fontSize: 11 }}>
+                  Data OHLC harian tidak cukup untuk menghitung Pivot Points.
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
       <div style={{ fontSize: 10, color: "var(--text-secondary)", marginTop: 12, padding: "10px 12px", background: "rgba(255,255,255,0.03)", borderRadius: "var(--r-sm)", border: "1px solid var(--border-light)", lineHeight: 1.5 }}>
         ℹ️ <strong>Panduan Transaksi:</strong>
         <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
           <li>Mulai membeli saham di kisaran harga <strong>Entry (Beli)</strong>.</li>
           <li>Batasi potensi kerugian dengan menjual jika harga turun menembus <strong>Stop Loss (Batas Rugi)</strong>.</li>
           <li>Ambil keuntungan secara bertahap saat harga naik mencapai <strong>Target 1 (Jual)</strong>.</li>
+          <li>Pantau area <strong>Support</strong> sebagai zona beli ulang dan <strong>Resistance</strong> sebagai potensi tekanan jual.</li>
         </ul>
       </div>
     </>
