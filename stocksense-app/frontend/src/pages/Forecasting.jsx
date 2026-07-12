@@ -16,61 +16,7 @@ function nextTradingDays(n) {
   return days
 }
 
-function mockXGB(lastClose) {
-  const preds = []
-  let p = lastClose || 9400
-  const vol = p * 0.012
-  for (let i = 0; i < 3; i++) {
-    const chg = (Math.random() - 0.43) * vol
-    p += chg
-    preds.push({
-      date: nextTradingDays(3)[i].toISOString().split("T")[0],
-      price: Math.round(p),
-      price_low: Math.round(p - vol * (1 + i * 0.5)),
-      price_high: Math.round(p + vol * (1 + i * 0.5)),
-      change_pct: parseFloat(((chg / (p - chg)) * 100).toFixed(2)),
-      confidence: parseFloat((0.88 - i * 0.04).toFixed(2)),
-    })
-  }
-  return { model_name: "XGBoost", model_accuracy: 72.5, predictions: preds, recommendation: "HOLD", confidence: 0.72, _mock: true }
-}
-
-function mockLLM(lastClose) {
-  const p0 = lastClose || 9400
-  const vol = p0 * 0.014
-  const d = nextTradingDays(3)
-  return {
-    price_tomorrow: Math.round(p0 + (Math.random() - 0.45) * vol),
-    price_tomorrow_low: Math.round(p0 - vol * 1.1),
-    price_tomorrow_high: Math.round(p0 + vol * 1.1),
-    day2_price: Math.round(p0 + (Math.random() - 0.43) * vol * 1.5),
-    day2_low: Math.round(p0 - vol * 1.6),
-    day2_high: Math.round(p0 + vol * 1.6),
-    day3_price: Math.round(p0 + (Math.random() - 0.4) * vol * 2),
-    day3_low: Math.round(p0 - vol * 2.2),
-    day3_high: Math.round(p0 + vol * 2.2),
-    price_range_3d: { min: Math.round(p0 - vol * 2.5), max: Math.round(p0 + vol * 2.5) },
-    recommendation: "HOLD",
-    confidence: 0.78,
-    reasons: ["RSI menunjukkan momentum netral", "Volume dalam rentang normal", "Trend jangka pendek belum jelas"],
-    summary: "Saham dalam konsolidasi. Tunggu konfirmasi arah sebelum masuk posisi.",
-    _mock: true,
-  }
-}
-
-function mockHistory(months = 3) {
-  const data = []
-  let p = 9300
-  const days = months * 22
-  for (let i = days; i >= 0; i--) {
-    const d = new Date()
-    d.setDate(d.getDate() - i)
-    if (d.getDay() === 0 || d.getDay() === 6) continue
-    p += (Math.random() - 0.45) * 90
-    data.push({ date: d.toISOString().split("T")[0], close: Math.round(p) })
-  }
-  return data
-}
+// Mock functions removed.
 
 // ─── range-band plugin ──────────────────────────────────────────
 const rangeBandPlugin = {
@@ -208,9 +154,8 @@ export default function Forecasting() {
       api.getPrediction(currentTicker),
     ]).then(([h, p]) => {
       if (!alive) return
-      const hd = h.status === "fulfilled" && h.value.data?.length ? h.value.data : mockHistory(3)
-      const lastClose = hd.length ? hd[hd.length - 1].close : 9400
-      const pd = p.status === "fulfilled" && p.value.predictions?.length ? p.value : mockXGB(lastClose)
+      const hd = h.status === "fulfilled" && h.value.data?.length ? h.value.data : []
+      const pd = p.status === "fulfilled" && p.value.predictions?.length ? p.value : null
       setHist(hd)
       setXgbPredRaw(pd)
       setBusy(false)
@@ -237,7 +182,7 @@ export default function Forecasting() {
       if (!alive) return
       if (data) setLlmPredRaw(data)
     }).catch(() => {
-      if (alive) setLlmPredRaw(mockLLM(hist.length ? hist[hist.length - 1].close : 9400))
+      if (alive) setLlmPredRaw(null)
     })
 
     return () => { alive = false }
@@ -458,7 +403,7 @@ export default function Forecasting() {
   // Auto-simpan begitu prediksi XGBoost & LLM (asli, bukan mock) siap.
   useEffect(() => {
     if (!xgbPredRaw || !llmPredRaw) return
-    if (xgbPredRaw._mock || llmPredRaw._mock) return
+    if (!xgbPredRaw || !llmPredRaw) return
     if (!lastClose) return
     const key = currentTicker + ":" + (xgbPreds[0]?.date || "")
     if (savedRef.current === key) return
@@ -504,9 +449,8 @@ export default function Forecasting() {
             setBusy(true)
             Promise.allSettled([api.getHistory(currentTicker, histPeriod, true), api.getPrediction(currentTicker)])
               .then(([h, p]) => {
-                const hd = h.status === "fulfilled" && h.value.data?.length ? h.value.data : mockHistory(3)
-                const lastC = hd.length ? hd[hd.length - 1].close : 9400
-                const pd = p.status === "fulfilled" && p.value.predictions?.length ? p.value : mockXGB(lastC)
+                const hd = h.status === "fulfilled" && h.value.data?.length ? h.value.data : []
+                const pd = p.status === "fulfilled" && p.value.predictions?.length ? p.value : null
                 setHist(hd); setXgbPredRaw(pd); setBusy(false)
               })
           }}

@@ -20,8 +20,7 @@ const MODES = [
   { key: "macro",     label: "🌍 Makro",    desc: "BI Rate, inflasi, PDB, IHSG, USD/IDR dari data resmi" },
 ]
 
-// Model default — LLaMA-4 Scout (tidak bisa diganti via UI)
-const DEFAULT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+// Model default diputuskan oleh backend berdasarkan llm_provider
 
 const QUICK_PROMPTS = {
   general: [
@@ -332,7 +331,7 @@ function CandlestickChart({ data, loading }) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function ChatAI() {
-  const { currentTicker } = useApp()
+  const { currentTicker, llmProvider } = useApp()
   const code = currentTicker ? currentTicker.replace(".JK", "") : ""
 
   const [messages, setMessages] = useState(() => {
@@ -594,7 +593,7 @@ export default function ChatAI() {
         messages: next.map(m => ({ role: m.role, content: m.content || "", image: m.image })),
         stock_context: fullCtx || undefined,
         mode,
-        model: DEFAULT_MODEL,
+        llm_provider: llmProvider,
       })
       setMessages(cur => [...cur, { role: "assistant", content: res.reply || "(kosong)", ts: Date.now() }])
     } catch (e) {

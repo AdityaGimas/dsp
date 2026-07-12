@@ -40,9 +40,15 @@ export function AppProvider({ children }) {
     }
   })
 
+  const [llmProvider, setLlmProvider] = useState(() => localStorage.getItem("llm_provider") || "groq")
+
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const triggerRefresh = useCallback(() => setRefreshTrigger((t) => t + 1), [])
+
+  useEffect(() => {
+    localStorage.setItem("llm_provider", llmProvider)
+  }, [llmProvider])
 
   // ── Shared news+sentiment cache (in-memory, per ticker) ──────────────────
   // Struktur: { [ticker]: { data: {...}, busy: false, err: "", aiSummary: "" } }
@@ -98,6 +104,7 @@ export function AppProvider({ children }) {
           content: a.content || "",
           category: a.category || "market",
         })),
+        llmProvider
       )
 
       // 4. Merge
@@ -135,6 +142,7 @@ export function AppProvider({ children }) {
           ticker,
           articles: merged.map((a) => ({ source: a.source, title: a.title })),
           sentiment_summary: sentData.summary,
+          llm_provider: llmProvider
         })
         .then((r) => {
           const txt = r.summary || r.main_theme || "Groq tidak memberikan ringkasan."
@@ -158,7 +166,7 @@ export function AppProvider({ children }) {
     } finally {
       fetchingRef.current[ticker] = false
     }
-  }, [newsCache])
+  }, [newsCache, llmProvider])
 
   useEffect(() => {
     api
@@ -197,6 +205,8 @@ export function AppProvider({ children }) {
     // News/sentiment shared cache
     newsCache,
     fetchNewsForTicker,
+    llmProvider,
+    setLlmProvider,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

@@ -1,7 +1,7 @@
 """
 sentiment.py — Dual sentiment inference:
   1. Finetuned IndoBERT via Hugging Face Space (cloud, tanpa GPU lokal)
-  2. Groq LLM (cloud, llama-3.1-8b-instant)
+  2. LLM (cloud, gpt-4o-mini atau llama-3.3-70b-versatile)
 Model dijalankan di server Hugging Face Space, hanya butuh URL Space.
 """
 from fastapi import APIRouter
@@ -11,7 +11,7 @@ import os
 import asyncio
 import httpx
 from dotenv import load_dotenv
-from .grok import groq_chat, groq_chat_rotate, get_key, parse_json
+from .llm import groq_chat, groq_chat_rotate, get_key, parse_json
 
 load_dotenv()
 
@@ -42,6 +42,7 @@ class SentimentRequest(BaseModel):
     ticker:   str
     articles: List[ArticleInput]
     api_key:  Optional[str] = None
+    llm_provider: Optional[str] = None
 
 # ─── HF Space API (cloud) ────────────────────────────────────────────────────
 async def _call_hf_api(texts: list, max_retries: int = 3) -> list:
@@ -156,7 +157,7 @@ def _extract_json_obj(content: str):
     return None
 
 
-async def predict_llm(ticker: str, articles: List[ArticleInput], api_key: str, model: str = None, use_json: bool = True, reasoning_effort: str = None) -> list:
+async def predict_llm(ticker: str, articles: List[ArticleInput], api_key: str, model: str = None, use_json: bool = True, reasoning_effort: str = None, provider: str = None) -> list:
     if not articles:
         return []
     try:
@@ -180,11 +181,11 @@ Berita:
     prompt += '\nBalas HANYA dengan JSON valid berformat object: {"results": [{"index": int, "label": "positive"|"neutral"|"negative", "score": 0.0-1.0}]}'
 
     try:
-        from .grok import MODEL_NEWS
+        from .llm import MODEL_NEWS
         use_model = model or MODEL_NEWS
         res  = await groq_chat_rotate(
             [{"role": "user", "content": prompt}],
-            model=use_model, max_tokens=3500, api_key=api_key, json_mode=use_json, reasoning_effort=reasoning_effort
+            groq_model=use_model, max_tokens=3500, api_key=api_key, json_mode=use_json, reasoning_effort=reasoning_effort, provider=provider
         )
         content = res["choices"][0]["message"]["content"] or ""
         data = _extract_json_obj(content)
@@ -211,15 +212,15 @@ Berita:
 @router.post("/predict")
 async def predict_sentiment(req: SentimentRequest):
     """
-    Prediksi sentimen dual-model: IndoBERT lokal + Groq LLM.
+    Prediksi sentimen dual-model: IndoBERT lokal + LLM.
     Hasil per artikel berisi: sentiment (HF), llm_sentiment (Groq).
     """
     # Jalankan paralel
-    from .grok import MODEL_NEWS, MODEL_NEWS2
+    from .llm import MODEL_NEWS, MODEL_NEWS2
     hf_res, llm_res, llm2_res = await asyncio.gather(
         predict_hf(req.articles),
-        predict_llm(req.ticker, req.articles, req.api_key, MODEL_NEWS),
-        predict_llm(req.ticker, req.articles, req.api_key, MODEL_NEWS2, reasoning_effort="none"),
+        predict_llm(req.ticker, req.articles, req.api_key, MODEL_NEWS, provider=req.llm_provider),
+        predict_llm(req.ticker, req.articles, req.api_key, MODEL_NEWS2, reasoning_effort="none", provider=req.llm_provider),
     )
 
     LABEL_ID = {"positive": "Positif", "neutral": "Netral", "negative": "Negatif"}

@@ -1,6 +1,6 @@
-"""Chat AI endpoint — AI Advisor Manajemen Saham IDX via Groq.
+"""Chat AI endpoint — AI Advisor Manajemen Saham IDX via LLM.
 Dilengkapi dengan konteks grafik harga, mode analisis, dan format Markdown.
-Memakai ulang rotasi multi-API-key & penanganan limit dari grok.py.
+Memakai ulang rotasi multi-API-key & penanganan limit dari llm.py.
 
 Konteks yang dikirim ke AI (semua dari data yang sudah di-fetch di frontend):
   - Harga, RSI, MACD, Golden Cross
@@ -14,12 +14,12 @@ from pydantic import BaseModel
 from typing import List, Optional, Any
 import os
 
-from .grok import groq_chat_rotate
+from .llm import llm_chat_rotate, LLM_PROVIDER, OPENAI_CHAT_MODEL, GROQ_CHAT_MODEL
 
 router = APIRouter()
 
-# Model multimodal Groq (bisa baca gambar). Bisa di-override lewat .env.
-CHAT_MODEL = os.getenv("GROQ_CHAT_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+# Model multimodal Groq atau OpenAI (bisa baca gambar).
+# Model aktif akan ditentukan per-request berdasarkan llm_provider.
 
 # Label periode chart yang ramah dibaca
 _PERIOD_LABEL = {
@@ -44,6 +44,7 @@ class ChatReq(BaseModel):
     mode: Optional[str] = "general"  # general | technical | news | macro
     api_key: Optional[str] = None
     model: Optional[str] = None
+    llm_provider: Optional[str] = None
 
 
 def _rsi_interpretation(rsi: float) -> str:
@@ -422,11 +423,15 @@ async def chat(req: ChatReq):
     groq_messages = [{"role": "system", "content": _system_prompt(req.stock_context, mode)}]
     groq_messages += [_to_groq_message(m) for m in req.messages]
 
-    # Gunakan model pilihan user atau fallback ke CHAT_MODEL bawaan
-    model_to_use = req.model if req.model else CHAT_MODEL
+    # Tentukan default model berdasarkan provider
+    active_prov = (req.llm_provider or LLM_PROVIDER).lower()
+    default_chat_model = OPENAI_CHAT_MODEL if active_prov == "openai" else GROQ_CHAT_MODEL
 
-    res = await groq_chat_rotate(
-        groq_messages, model_to_use, max_tokens=2048, api_key=req.api_key
+    # Gunakan model pilihan user atau fallback ke default_chat_model
+    model_to_use = req.model if req.model else default_chat_model
+
+    res = await llm_chat_rotate(
+        groq_messages, model_to_use, max_tokens=2048, api_key=req.api_key, provider=req.llm_provider
     )
     try:
         reply = res["choices"][0]["message"]["content"]

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { Line } from "react-chartjs-2"
 import { api } from "../api/client.js"
+import { useApp } from "../context/AppContext.jsx"
 import TickerSearchBar from "../components/TickerSearchBar.jsx"
 
 const St = {
@@ -24,11 +25,7 @@ const St = {
   wPct: { fontSize: 10, width: 34, textAlign: "right", color: "var(--text-secondary)", fontFamily: "var(--font-mono)" },
 }
 
-// Fallback (dipakai hanya bila backend belum mengirim charts).
-const GDP_MONTHS = ["Q1'24", "Q2'24", "Q3'24", "Q4'24", "Q1'25", "Q2'25", "Q3'25", "Q4'25", "Q1'26"]
-const GDP_FALLBACK = [5.11, 5.05, 4.95, 5.02, 4.87, 5.12, 5.04, 5.39, 5.61]
-const INFL_FALLBACK = [null, null, null, null, null, null, 2.65, 2.92, 3.48]
-const BIRATE_FALLBACK = [4.75, 4.75, 4.75, 4.75, 4.75, 4.75, 4.75, 5.25, 5.75]
+// Fallbacks removed.
 
 // ── helpers ──
 const nf = (v, d = 0) =>
@@ -217,6 +214,7 @@ function renderHeroDetail(label, m) {
 }
 
 export default function MakroEkonomi() {
+  const { llmProvider } = useApp()
   const [macroData, setMacroData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [updatedAt, setUpdatedAt] = useState("")
@@ -247,7 +245,7 @@ export default function MakroEkonomi() {
     setAiBusy(true)
     setAiErr("")
     try {
-      const res = await api.groqMacro({ macro_data: macroData, verdict: macroVerdict })
+      const res = await api.groqMacro({ macro_data: macroData, verdict: macroVerdict, llm_provider: llmProvider })
       setAiData(res)
     } catch (e) {
       setAiErr(e.message)
@@ -307,10 +305,10 @@ export default function MakroEkonomi() {
   // ───── CHARTS ─────
   const gdpChart = m.charts ? m.charts.GDP || {} : {}
   const gdpData = {
-    labels: gdpChart.labels || GDP_MONTHS,
+    labels: gdpChart.labels || [],
     datasets: [
-      { label: "PDB", data: gdpChart.data || GDP_FALLBACK, borderColor: "#4f9cf9", backgroundColor: "rgba(79,156,249,0.12)", borderWidth: 2, pointRadius: 2.5, pointBackgroundColor: "#4f9cf9", tension: 0.35, fill: true, yAxisID: "y", spanGaps: true },
-      { label: "Inflasi", data: gdpChart.inflation || INFL_FALLBACK, borderColor: "#a78bfa", borderWidth: 2, pointRadius: 2.5, pointBackgroundColor: "#a78bfa", borderDash: [4, 3], tension: 0.35, yAxisID: "y", spanGaps: true },
+      { label: "PDB", data: gdpChart.data || [], borderColor: "#4f9cf9", backgroundColor: "rgba(79,156,249,0.12)", borderWidth: 2, pointRadius: 2.5, pointBackgroundColor: "#4f9cf9", tension: 0.35, fill: true, yAxisID: "y", spanGaps: true },
+      { label: "Inflasi", data: gdpChart.inflation || [], borderColor: "#a78bfa", borderWidth: 2, pointRadius: 2.5, pointBackgroundColor: "#a78bfa", borderDash: [4, 3], tension: 0.35, yAxisID: "y", spanGaps: true },
     ],
   }
   const gdpOpts = baseOpts((v) => v + "%")
@@ -331,8 +329,8 @@ export default function MakroEkonomi() {
 
   const biRateChart = m.charts ? m.charts.BIRate || {} : {}
   const biRateData = {
-    labels: biRateChart.labels || GDP_MONTHS,
-    datasets: [{ data: biRateChart.data || BIRATE_FALLBACK, borderColor: "#f55e5e", backgroundColor: "rgba(245,94,94,0.12)", borderWidth: 2, pointRadius: 2.5, pointBackgroundColor: "#f55e5e", tension: 0.1, fill: true, stepped: true }],
+    labels: biRateChart.labels || [],
+    datasets: [{ data: biRateChart.data || [], borderColor: "#f55e5e", backgroundColor: "rgba(245,94,94,0.12)", borderWidth: 2, pointRadius: 2.5, pointBackgroundColor: "#f55e5e", tension: 0.1, fill: true, stepped: true }],
   }
   const biRateOpts = baseOpts((v) => Number(v).toFixed(2) + "%")
 

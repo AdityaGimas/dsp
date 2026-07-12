@@ -32,15 +32,15 @@ export const api = {
   savePredictionHistory: (payload) => postJSON("/prediction-history/save", payload),
   getPredictionHistory: (t, limit = 30) => getJSON(`/prediction-history/${t}?limit=${limit}`),
   getNews: (t, perSource = 50) => getJSON(`/news/${t}?per_source=${perSource}`),
-  predictSentiment: (ticker, articles) =>
-    postJSON("/sentiment/predict", { ticker, articles }),
+  predictSentiment: (ticker, articles, llm_provider) =>
+    postJSON("/sentiment/predict", { ticker, articles, llm_provider }),
   getMacro: (refresh = false) => getJSON("/macro" + (refresh ? "?refresh=true" : "")),
-  // Groq calls now go through the FastAPI backend proxy (/api/grok/*),
+  // Groq calls now go through the FastAPI backend proxy (/api/llm/*),
   // so the API key is never exposed in the browser network tab to third parties.
-  groqTechnical: (payload) => postJSON("/grok/technical", payload),
-  groqNewsSummary: (payload) => postJSON("/grok/news-summary", payload),
-  groqFinalReco: (payload) => postJSON("/grok/final-recommendation", payload),
-  groqMacro: (payload) => postJSON("/grok/macro", payload),
+  groqTechnical: (payload) => postJSON("/llm/technical", payload),
+  groqNewsSummary: (payload) => postJSON("/llm/news-summary", payload),
+  groqFinalReco: (payload) => postJSON("/llm/final-recommendation", payload),
+  groqMacro: (payload) => postJSON("/llm/macro", payload),
   chat: (payload) => postJSON("/chat", payload),
 }
 

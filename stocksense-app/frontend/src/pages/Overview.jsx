@@ -109,8 +109,83 @@ const MA_COLORS = {
 }
 
 
+// ── Custom Dropdown for LLM Provider ────────────────────────
+function LlmDropdown({ value, onChange }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  const opts = [
+    { id: "groq", label: "Groq", color: "var(--purple)" },
+    { id: "openai", label: "OpenAI", color: "var(--green)" }
+  ]
+  const active = opts.find(o => o.id === value) || opts[0]
+
+  return (
+    <div ref={ref} style={{ position: "relative", marginLeft: 8 }}>
+      <div 
+        onClick={() => setOpen(!open)}
+        style={{
+          height: 28, 
+          padding: "0 28px 0 14px", 
+          borderRadius: 14, 
+          fontSize: 11, 
+          fontWeight: 600,
+          background: "rgba(255,255,255,0.06)", 
+          color: "var(--text-primary)", 
+          border: open ? `1px solid ${active.color}` : "1px solid rgba(255,255,255,0.1)", 
+          cursor: "pointer", 
+          display: "flex",
+          alignItems: "center",
+          transition: "all 0.2s"
+        }}
+        onMouseOver={(e) => { if (!open) e.currentTarget.style.background = "rgba(255,255,255,0.1)" }}
+        onMouseOut={(e) => { if (!open) e.currentTarget.style.background = "rgba(255,255,255,0.06)" }}
+      >
+        {active.label}
+        <div style={{ position: "absolute", right: 10, color: "var(--text-muted)", fontSize: 9, transition: "transform 0.2s", transform: open ? "rotate(180deg)" : "rotate(0deg)" }}>
+          ▼
+        </div>
+      </div>
+
+      {open && (
+        <div style={{
+          position: "absolute", top: "100%", right: 0, marginTop: 6,
+          background: "#1c2028", border: "1px solid rgba(255,255,255,0.1)",
+          borderRadius: 10, overflow: "hidden", minWidth: 100,
+          zIndex: 100, boxShadow: "0 8px 24px rgba(0,0,0,0.6)"
+        }}>
+          {opts.map(o => (
+            <div
+              key={o.id}
+              onClick={() => { onChange(o.id); setOpen(false) }}
+              style={{
+                padding: "8px 14px", fontSize: 11, fontWeight: 600,
+                color: value === o.id ? o.color : "var(--text-primary)",
+                background: value === o.id ? "rgba(255,255,255,0.05)" : "transparent",
+                cursor: "pointer", transition: "background 0.2s"
+              }}
+              onMouseOver={(e) => { if (value !== o.id) e.target.style.background = "rgba(255,255,255,0.03)" }}
+              onMouseOut={(e) => { if (value !== o.id) e.target.style.background = "transparent" }}
+            >
+              {o.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Overview() {
-  const { currentTicker, refreshTrigger, isRefreshing, setIsRefreshing, newsCache, fetchNewsForTicker } = useApp()
+  const { currentTicker, refreshTrigger, isRefreshing, setIsRefreshing, newsCache, fetchNewsForTicker, llmProvider, setLlmProvider, triggerRefresh } = useApp()
 
   const [info, setInfo] = useState(null)
   const [hist, setHist] = useState([])
@@ -356,6 +431,7 @@ export default function Overview() {
         current_price: info?.current_price || 0,
         indicators,
         ml_prediction: mlPred || undefined,
+        llm_provider: llmProvider,
       }
       const res = await api.groqTechnical(payload)
       setGroqTechRaw(res)
@@ -388,6 +464,7 @@ export default function Overview() {
         groq_news: news || undefined,
         macro_data: macroData || undefined,
         indicators: indicators || undefined,
+        llm_provider: llmProvider,
       }
       const res = await api.groqFinalReco(payload)
       setFinalReco(res)
@@ -967,6 +1044,18 @@ export default function Overview() {
           {isRefreshing ? <span className="spin-sm" style={{ borderTopColor: "var(--green)", width: 12, height: 12, marginRight: 6 }} /> : <span style={{ marginRight: 4 }}>↻</span>}
           <span className="btn-txt" style={{ color: "var(--green)" }}>{isRefreshing ? "Memuat..." : "Refresh"}</span>
         </button>
+        <LlmDropdown
+          value={llmProvider}
+          onChange={(newVal) => {
+            if (llmProvider === newVal) return;
+            setLlmProvider(newVal)
+            localStorage.removeItem(`wl_stocksense_${currentTicker}_ml`)
+            localStorage.removeItem(`wl_stocksense_${currentTicker}_groqTech`)
+            localStorage.removeItem(`wl_stocksense_${currentTicker}_news`)
+            localStorage.removeItem(`wl_stocksense_${currentTicker}_groqNewsSummary`)
+            triggerRefresh()
+          }}
+        />
       </TickerSearchBar>
 
       <div className="content">

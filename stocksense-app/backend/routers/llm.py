@@ -10,7 +10,15 @@ load_dotenv()
 
 router = APIRouter()
 
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq").lower()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+OPENAI_MODEL_DEFAULT = "gpt-4o-mini"
+OPENAI_CHAT_MODEL = "gpt-4o"
+GROQ_CHAT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+OPENAI_URL = "https://api.openai.com/v1/chat/completions"
+
 
 # Model berbeda tiap endpoint -> rate limit tidak cepat habis
 MODEL_TECHNICAL  = "llama-3.3-70b-versatile"
@@ -19,12 +27,7 @@ MODEL_NEWS2      = "qwen/qwen3-32b"
 MODEL_FINAL_RECO = "llama-3.3-70b-versatile"
 
 
-# Pool API key + rotasi (round-robin) + fallback otomatis.
-# Sumber key digabung urutan: list koma -> bernomor -> tunggal.
-#   GROQ_API_KEYS  = "gsk_a,gsk_b,gsk_c"
-#   GROQ_API_KEY_1 = gsk_a / GROQ_API_KEY_2 = ...
-#   GROQ_API_KEY   = gsk_a   (kompatibel lama)
-def get_key_pool() -> list:
+def get_groq_key_pool() -> list:
     keys = []
     multi = os.getenv("GROQ_API_KEYS", "")
     if multi:
@@ -61,22 +64,35 @@ def _next_start(n: int) -> int:
 
 
 def get_key(req_key: Optional[str]) -> str:
-    """Kompatibilitas lama: 1 key (req override, atau key pertama dari pool)."""
+    """Kompatibilitas lama atau mengambil key spesifik provider."""
     if req_key:
         return req_key
-    pool = get_key_pool()
+    if LLM_PROVIDER == "openai":
+        if not OPENAI_API_KEY:
+            raise HTTPException(400, "OpenAI API key tidak ditemukan. Set OPENAI_API_KEY di .env.")
+        return OPENAI_API_KEY
+        
+    pool = get_groq_key_pool()
     if not pool:
-        raise HTTPException(400, "Groq API key tidak ditemukan. Set GROQ_API_KEY atau GROQ_API_KEYS di .env, atau isi via tombol 'Groq API Key'.")
+        raise HTTPException(400, "Groq API key tidak ditemukan. Set GROQ_API_KEY atau GROQ_API_KEYS di .env.")
     return pool[0]
 
 
 _ROTATE_CODES = {429, 401, 403, 408, 500, 502, 503, 504}
 
 
-async def groq_chat_rotate(messages: list, model: str, max_tokens: int = 700, api_key: Optional[str] = None, json_mode: bool = False, reasoning_effort: Optional[str] = None) -> dict:
-    """Panggil Groq dengan rotasi key + fallback bila kena limit. Error hanya
-    dilempar bila SEMUA key gagal."""
-    pool = [api_key.strip()] if api_key else get_key_pool()
+async def llm_chat_rotate(messages: list, groq_model: str, max_tokens: int = 700, api_key: Optional[str] = None, json_mode: bool = False, reasoning_effort: Optional[str] = None, provider: Optional[str] = None) -> dict:
+    """Panggil LLM (OpenAI atau Groq). Untuk Groq, ada fallback rotasi key."""
+    active_provider = (provider or LLM_PROVIDER).lower()
+    if active_provider == "openai":
+        is_openai_model = "gpt-" in groq_model or "o1-" in groq_model
+        model_to_use = groq_model if is_openai_model else OPENAI_MODEL_DEFAULT
+        key_to_use = api_key.strip() if api_key else OPENAI_API_KEY
+        if not key_to_use:
+            raise HTTPException(400, "OpenAI API key tidak ditemukan. Set OPENAI_API_KEY di .env.")
+        return await llm_chat_request(messages, key_to_use, model_to_use, max_tokens, json_mode, OPENAI_URL, None)
+        
+    pool = [api_key.strip()] if api_key else get_groq_key_pool()
     if not pool:
         raise HTTPException(400, "Groq API key tidak ditemukan. Set GROQ_API_KEY atau GROQ_API_KEYS di .env, atau isi via tombol 'Groq API Key'.")
     n = len(pool)
@@ -85,7 +101,7 @@ async def groq_chat_rotate(messages: list, model: str, max_tokens: int = 700, ap
     for offset in range(n):
         key = pool[(start + offset) % n]
         try:
-            return await groq_chat(messages, key, model, max_tokens, json_mode=json_mode, reasoning_effort=reasoning_effort)
+            return await llm_chat_request(messages, key, groq_model, max_tokens, json_mode, GROQ_URL, reasoning_effort)
         except HTTPException as e:
             last_detail = str(e.detail)
             if e.status_code in _ROTATE_CODES:
@@ -93,23 +109,25 @@ async def groq_chat_rotate(messages: list, model: str, max_tokens: int = 700, ap
             raise
     raise HTTPException(429, f"Semua {n} Groq API key kena limit atau gagal. Terakhir: {last_detail[:200]}")
 
+groq_chat_rotate = llm_chat_rotate
 
-async def groq_chat(messages: list, api_key: str, model: str, max_tokens: int = 700, json_mode: bool = False, reasoning_effort: Optional[str] = None) -> dict:
+async def llm_chat_request(messages: list, api_key: str, model: str, max_tokens: int = 700, json_mode: bool = False, url: str = GROQ_URL, reasoning_effort: Optional[str] = None) -> dict:
     payload = {"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0.2}
     if json_mode:
-        # Paksa Groq mengembalikan JSON valid (JSON mode, OpenAI-compatible).
         payload["response_format"] = {"type": "json_object"}
-    if reasoning_effort:
-        # Untuk model reasoning (mis. Qwen3): "none" mematikan thinking -> JSON bersih.
+    if reasoning_effort and url == GROQ_URL:
         payload["reasoning_effort"] = reasoning_effort
+        
     async with httpx.AsyncClient(timeout=40) as c:
-        r = await c.post(GROQ_URL,
+        r = await c.post(url,
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json=payload
         )
         if not r.is_success:
-            raise HTTPException(r.status_code, f"Groq API error: {r.text[:300]}")
+            raise HTTPException(r.status_code, f"LLM API error ({LLM_PROVIDER}): {r.text[:300]}")
         return r.json()
+
+groq_chat = llm_chat_request
 
 
 def parse_json(text: str) -> dict:
@@ -178,6 +196,7 @@ class TechReq(BaseModel):
     indicators: dict
     ml_prediction: Optional[dict] = None
     api_key: Optional[str] = None
+    llm_provider: Optional[str] = None
 
 
 @router.post("/technical")
@@ -211,9 +230,10 @@ ATURAN WAJIB (ikuti dengan ketat):
 
 Balas HANYA JSON valid berikut tanpa teks lain. Ganti SETIAP placeholder <...> dengan hasil analisismu (angka Rupiah, bukan contoh):
 """ + TECH_SCHEMA
-    res  = await groq_chat_rotate([{"role": "user", "content": prompt}], MODEL_TECHNICAL, max_tokens=700, api_key=req.api_key, json_mode=True)
+    res  = await groq_chat_rotate([{"role": "user", "content": prompt}], MODEL_TECHNICAL, max_tokens=700, api_key=req.api_key, json_mode=True, provider=req.llm_provider)
     data = parse_json(res["choices"][0]["message"]["content"])
-    return {"ticker": req.ticker, "source": "groq_technical", **data}
+    active_prov = (req.llm_provider or LLM_PROVIDER).lower()
+    return {"ticker": req.ticker, "source": f"{active_prov}_technical", **data}
 
 
 # 2. RINGKASAN BERITA
@@ -225,6 +245,7 @@ class NewsReq(BaseModel):
     llm_summary: Optional[dict] = None
     sector_filter: Optional[str] = "all"
     api_key: Optional[str] = None
+    llm_provider: Optional[str] = None
 
 
 @router.post("/news-summary")
@@ -263,9 +284,10 @@ ATURAN:
 
 Balas HANYA JSON valid berikut tanpa teks lain (ganti tiap placeholder <...> dengan nilai nyata):
 """ + NEWS_SCHEMA
-    res  = await groq_chat_rotate([{"role": "user", "content": prompt}], MODEL_NEWS, max_tokens=400, api_key=req.api_key, json_mode=True)
+    res  = await groq_chat_rotate([{"role": "user", "content": prompt}], MODEL_NEWS, max_tokens=400, api_key=req.api_key, json_mode=True, provider=req.llm_provider)
     data = parse_json(res["choices"][0]["message"]["content"])
-    return {"ticker": req.ticker, "source": "groq_news", **data}
+    active_prov = (req.llm_provider or LLM_PROVIDER).lower()
+    return {"ticker": req.ticker, "source": f"{active_prov}_news", **data}
 
 
 # 3. REKOMENDASI AKHIR
@@ -281,6 +303,7 @@ class FinalReq(BaseModel):
     macro_data: Optional[dict] = None
     indicators: Optional[dict] = None
     api_key: Optional[str] = None
+    llm_provider: Optional[str] = None
 
 
 @router.post("/final-recommendation")
@@ -443,7 +466,7 @@ ATURAN WAJIB:
 
 Balas HANYA JSON valid berikut tanpa teks lain (ganti tiap placeholder <...> dengan nilai nyata):
 """ + FINAL_SCHEMA
-    res  = await groq_chat_rotate([{"role": "user", "content": prompt}], MODEL_FINAL_RECO, max_tokens=1200, api_key=req.api_key, json_mode=True)
+    res  = await groq_chat_rotate([{"role": "user", "content": prompt}], MODEL_FINAL_RECO, max_tokens=1200, api_key=req.api_key, json_mode=True, provider=req.llm_provider)
     data = parse_json(res["choices"][0]["message"]["content"])
     return {"ticker": req.ticker, "foreign_flow": ff_payload, **data}
 
@@ -453,6 +476,7 @@ class MacroReq(BaseModel):
     macro_data: dict
     verdict: Optional[dict] = None
     api_key: Optional[str] = None
+    llm_provider: Optional[str] = None
 
 @router.post("/macro")
 async def groq_macro(req: MacroReq):
@@ -514,6 +538,7 @@ ATURAN WAJIB:
 
 Balas HANYA JSON valid berikut tanpa teks lain (ganti placeholder <...>):
 """ + MACRO_SCHEMA
-    res = await groq_chat_rotate([{"role": "user", "content": prompt}], MODEL_TECHNICAL, max_tokens=600, api_key=req.api_key, json_mode=True)
+    res = await groq_chat_rotate([{"role": "user", "content": prompt}], MODEL_TECHNICAL, max_tokens=600, api_key=req.api_key, json_mode=True, provider=req.llm_provider)
     data = parse_json(res["choices"][0]["message"]["content"])
-    return {"source": "groq_macro", **data}
+    active_prov = (req.llm_provider or LLM_PROVIDER).lower()
+    return {"source": f"{active_prov}_macro", **data}
