@@ -1,136 +1,241 @@
-# StockSense LQ45
+# 📈 StockSense LQ45
 
-Dashboard analisis saham LQ45 (IDX) dengan analisis teknikal, prediksi harga (ML),
-berita & sentimen, data makro ekonomi, dan asisten **Chat AI** yang bisa membaca
-gambar grafik. Repo ini berisi dua bagian:
+![StockSense Banner](https://img.shields.io/badge/StockSense-Dashboard-blue?style=for-the-badge&logo=react)
+![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)
+![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Machine Learning](https://img.shields.io/badge/Machine%20Learning-XGBoost-orange?style=for-the-badge)
 
-```
+**StockSense LQ45** adalah dashboard analisis saham komprehensif yang dikhususkan untuk indeks saham LQ45 (Bursa Efek Indonesia / IDX). Aplikasi ini menyediakan analisis teknikal, prediksi harga menggunakan Machine Learning, analisis sentimen berita, data makro ekonomi, dan dilengkapi dengan asisten **Chat AI** cerdas yang mampu menganalisis grafik candlestick (multimodal vision).
+
+Proyek ini dibangun menggunakan arsitektur monorepo yang memisahkan antara frontend (React/Vite) dan backend (FastAPI/Python).
+
+---
+
+## ✨ Fitur Utama
+
+- 📊 **Overview Saham Real-Time:** Menampilkan data harga saham secara live menggunakan `yfinance`, lengkap dengan metrik kunci, ringkasan teknikal, dan kesimpulan cerdas dari **Groq LLM**.
+- 🤖 **Forecasting Harga (Machine Learning):** Memprediksi pergerakan harga saham ke depan menggunakan model **XGBoost**. Memberikan sinyal rekomendasi cerdas (BUY/SELL/HOLD) yang didasarkan pada perpaduan expected return dan indikator RSI.
+- 📉 **Indikator Teknikal Lengkap:** Kalkulasi otomatis untuk berbagai indikator teknikal seperti RSI (Relative Strength Index), MACD, Moving Average (untuk deteksi *golden/death cross*), dan indikator lainnya menggunakan pustaka `ta`.
+- 📰 **Analisis Berita & Sentimen:** Secara otomatis melakukan scraping berita terbaru terkait saham yang dipilih dan menganalisis sentimen pasar menggunakan arsitektur **Dual-Model**: Model **IndoBERT** yang di-finetune (di-hosting via Hugging Face Space) digabungkan dengan **Groq LLM** untuk analisis mendalam.
+- 🌍 **Data Makro Ekonomi Nyata:** Menyajikan gambaran ekonomi makro yang mempengaruhi pasar seperti BI Rate, tingkat Inflasi, PDB Indonesia, serta data IHSG, nilai tukar USD-IDR, dan harga komoditas utama dunia.
+- 💬 **Chat AI Multimodal 🆕:** Asisten virtual cerdas yang memahami konteks saham aktif (harga saat ini, RSI, MACD, sinyal ML). AI ini juga mendukung **analisis gambar** (upload screenshot chart/candlestick) yang diproses menggunakan model vision dari Groq untuk memberikan pandangan teknikal secara instan.
+- 🔑 **Sistem Rotasi API Key (Groq):** Mendukung penggunaan banyak API Key Groq secara bergantian (round-robin) untuk menghindari limitasi rate-limit (fallback system), dan memaksakan output menggunakan **JSON Mode** untuk integrasi yang stabil.
+- ⚡ **Sistem Caching Cerdas:** Data disajikan dengan cepat berkat sistem cache (TTL) di backend. Dilengkapi tombol **↻ Refresh** di antarmuka pengguna untuk mengambil pembaruan data secara instan saat dibutuhkan.
+
+---
+
+## 🛠️ Tech Stack
+
+### Frontend
+- **Framework:** React.js 18 + Vite
+- **Routing:** React Router DOM
+- **Data Visualization:** Chart.js + React-Chartjs-2
+- **Styling:** CSS3 Vanilla
+
+### Backend
+- **Framework:** FastAPI + Uvicorn
+- **Data Fetching:** yfinance, pandas, numpy
+- **Technical Analysis:** `ta` library
+- **Web Scraping:** BeautifulSoup4, Newspaper3k, Trafilatura, DuckDuckGo Search
+- **Machine Learning:** XGBoost, Scikit-Learn (Predictive Modeling)
+- **NLP & AI:** Hugging Face Hub (IndoBERT), Groq API (LLaMA 3/4)
+
+---
+
+## 📂 Struktur Proyek
+
+```text
 stocksense-app/
-  backend/    # API FastAPI (Python) — data saham, indikator, berita, sentimen, makro, Groq LLM, Chat AI
-  frontend/   # Aplikasi React (Vite) — UI dashboard
+├── backend/                  # API Server (FastAPI / Python)
+│   ├── main.py               # Entry point aplikasi & konfigurasi CORS
+│   ├── routers/              # Endpoint API terpisah berdasar fitur
+│   │   ├── stocks.py         # Data harga, history, indikator teknikal
+│   │   ├── prediction.py     # Endpoint Machine Learning (XGBoost)
+│   │   ├── news.py           # Endpoint Scraping berita pasar
+│   │   ├── sentiment.py      # Endpoint Analisis Sentimen (IndoBERT + Groq)
+│   │   ├── grok.py           # Proxy & rotasi Groq LLM API
+│   │   ├── macro.py          # Endpoint data makro ekonomi
+│   │   └── chat.py           # Endpoint Chat AI Multimodal (Teks + Gambar)
+│   ├── services/             # Logika bisnis dan pengolahan data
+│   │   ├── market_data.py    # Modul yfinance
+│   │   ├── macro_data.py     # Modul agregasi data makro
+│   │   ├── news_scraper.py   # Modul utilitas scraping berita web
+│   │   └── cache.py          # Modul TTL Cache kustom
+│   ├── hf_space/             # Dockerfile & app.py untuk deployment HF Space IndoBERT
+│   └── requirements.txt      # Dependensi Python
+│
+├── frontend/                 # Client UI (React / Vite)
+│   ├── src/
+│   │   ├── pages/            # Halaman UI (Overview, Forecasting, Chat AI, dll.)
+│   │   ├── components/       # Komponen Reusable (Sidebar, Topbar, Search)
+│   │   ├── context/          # State management global
+│   │   ├── api/              # Konfigurasi client API (Axios/Fetch)
+│   │   └── styles/           # CSS Utama
+│   ├── package.json          # Dependensi NPM
+│   └── vite.config.js        # Konfigurasi Vite & Proxy API
+└── README.md                 # Dokumentasi utama (File ini)
 ```
 
-## Fitur utama
+---
 
-- **Overview saham** — harga real-time (yfinance), ringkasan teknikal + analisis Groq LLM.
-- **Forecasting** — prediksi harga memakai model **XGBoost** (`routers/prediction.py`),
-  lengkap dengan rekomendasi BUY/SELL/HOLD berbasis expected return & RSI.
-- **Indikator Teknikal** — RSI, MACD, Moving Average / golden cross, dll. (library `ta`).
-- **Berita & Sentimen** — scraping berita + **analisis sentimen dual-model**:
-  IndoBERT finetuned (via Hugging Face Space) digabung dengan Groq LLM.
-- **Makro Ekonomi** — data **nyata**: BI Rate, Inflasi, PDB, plus IHSG/USD-IDR/
-  komoditas via yfinance (`services/macro_data.py`, `routers/macro.py`).
-- **Chat AI** 🆕 — halaman chat dengan AI yang **sadar konteks saham aktif**
-  (harga, RSI, MACD, golden cross, rekomendasi ML) dan bisa menerima **upload
-  gambar** grafik/candlestick untuk dianalisis teknikalnya (model vision Groq).
-- **Multi-key Groq + rotasi otomatis** — beberapa API key dipakai bergiliran
-  (round-robin) dengan fallback saat kena limit, plus **JSON mode** agar output LLM valid.
-- **Cache + tombol Refresh** — data di-cache (TTL) supaya hemat & cepat; tiap
-  halaman punya tombol **↻ Refresh** untuk menembus cache dan menarik data terbaru.
+## 🚀 Panduan Instalasi & Menjalankan Aplikasi
 
-## 1. Menjalankan backend
+Ikuti panduan langkah demi langkah di bawah ini untuk menjalankan **StockSense LQ45** di mesin lokal Anda.
 
+### 1. Prasyarat Sistem
+Pastikan perangkat Anda sudah terinstal beberapa perangkat lunak berikut:
+- **Node.js (v18+)** dan **NPM**. Anda dapat mengeceknya dengan membuka terminal dan menjalankan perintah:
+  ```bash
+  node -v
+  npm -v
+  ```
+- **Python (v3.9 atau lebih baru)**. Cek versinya dengan perintah:
+  ```bash
+  python --version
+  ```
+- Akun dan API Key [Groq](https://console.groq.com/keys) (Gratis).
+- **Git** (Opsional, untuk melakukan *clone* repository).
+
+### 2. Unduh Repository
+Pertama, *clone* repository ini ke komputer Anda, lalu masuk ke foldernya:
 ```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-# buat file .env lalu isi key (lihat bagian "Konfigurasi .env" di bawah)
-uvicorn main:app --reload --port 8000
+git clone https://github.com/username/stocksense-app.git
+cd stocksense-app
 ```
 
-Backend jalan di http://localhost:8000 (dokumentasi otomatis di `/docs`).
+---
 
-> Catatan: prediksi harga (XGBoost), sentimen (IndoBERT + LLM), dan data makro
-> kini sudah memakai data/model **nyata** — tidak lagi dummy seperti versi awal.
+### 3. Setup & Menjalankan Backend (Python FastAPI)
 
-## 2. Menjalankan frontend
+Backend membutuhkan *virtual environment* agar dependensi Python (seperti yfinance, XGBoost, dll) tidak bentrok dengan *environment* global di komputer Anda.
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
+1. **Buka terminal** di dalam folder root aplikasi, kemudian masuk ke direktori `backend`:
+   ```bash
+   cd backend
+   ```
+2. **Buat Virtual Environment**:
+   ```bash
+   python -m venv .venv
+   ```
+3. **Aktifkan Virtual Environment**:
+   - 🪟 **Pengguna Windows:**
+     ```bash
+     .venv\Scripts\activate
+     ```
+     *(Jika muncul error terkait 'Execution Policy' di PowerShell, jalankan `Set-ExecutionPolicy Unrestricted -Scope CurrentUser` sebagai Administrator terlebih dahulu).*
+   - 🍏/🐧 **Pengguna macOS / Linux:**
+     ```bash
+     source .venv/bin/activate
+     ```
+4. **Instal Dependensi**:
+   Pastikan tanda `(.venv)` muncul di awal prompt terminal Anda, lalu instal library yang dibutuhkan:
+   ```bash
+   pip install -r requirements.txt
+   ```
+5. **Konfigurasi Environment Variable (`.env`)**:
+   Untuk dapat menjalankan fitur AI dan Analisis Sentimen, Anda memerlukan API Key.
+   - Buat sebuah file baru dengan nama `.env` persis di dalam folder `backend/` (sejajar dengan file `main.py`).
+   - Buka file `.env` tersebut dan masukkan konfigurasi berikut:
 
-Frontend jalan di http://localhost:5173. Request ke `/api/...` otomatis di-proxy
-ke http://localhost:8000 (lihat `frontend/vite.config.js`), jadi tidak ada masalah
-CORS saat development. Jalankan backend lebih dulu.
+   ```dotenv
+   # ── Groq LLM Configuration ──
+   # Cara mendapatkan Groq API Key (Gratis):
+   # 1. Buka https://console.groq.com/keys dan login
+   # 2. Klik tombol "Create API Key", copy key yang berawalan "gsk_"
+   # Anda bisa menaruh satu key, atau beberapa key dipisah koma untuk mencegah rate limit.
+   GROQ_API_KEYS=gsk_key_pertama,gsk_key_kedua
+   
+   # [Opsional] Model khusus Chat AI (mendukung Vision/Gambar)
+   GROQ_CHAT_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+   
+   # ── Sentiment Model (Hugging Face Space) ──
+   # Cara mendapatkan Hugging Face Token (Hanya jika Space Anda di-setting Private):
+   # 1. Buka https://huggingface.co/settings/tokens
+   # 2. Buat token baru dengan akses "Read"
+   HF_SPACE_URL=https://reehandn-sentiment-api.hf.space   # Biarkan default jika memakai API publik ini
+   HF_API_TOKEN=hf_xxxxxx                                 # Kosongkan atau hapus baris ini jika HF_SPACE_URL di atas bersifat Public
+   ```
+   
+   *(💡 **Tips Alternatif:** Anda juga dapat memasukkan API Key Groq secara instan melalui pop-up di UI Frontend tanpa perlu menyentuh file `.env`. Key tersebut akan dikirimkan secara aman ke backend).*
 
-## 3. Konfigurasi .env (backend/.env)
+6. **Jalankan Server Backend**:
+   ```bash
+   uvicorn main:app --reload --port 8000
+   ```
+   🚀 API Backend kini berjalan di `http://localhost:8000`. Anda dapat melihat dokumentasi interaktif API di `http://localhost:8000/docs`.
 
-Buat file `backend/.env` dan isi sesuai kebutuhan:
+---
 
-```dotenv
-# ── Groq LLM ──
-# Boleh satu key, atau BANYAK key sekaligus (dipakai bergiliran + fallback limit).
-GROQ_API_KEY=gsk_xxx                  # cara lama (1 key) — tetap didukung
-# atau beberapa key dipisah koma:
-GROQ_API_KEYS=gsk_a,gsk_b,gsk_c
-# atau bernomor:
-# GROQ_API_KEY_1=gsk_a
-# GROQ_API_KEY_2=gsk_b
+### 4. Setup & Menjalankan Frontend (React/Vite)
 
-# Model khusus Chat AI (multimodal/vision). Opsional — ada default.
-GROQ_CHAT_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+Setelah backend berhasil berjalan, buka **tab/jendela terminal baru** (biarkan terminal backend tetap berjalan).
 
-# ── Sentimen (Hugging Face Space — IndoBERT) ──
-HF_SPACE_URL=https://reehandn-sentiment-api.hf.space   # default sudah diisi
-HF_API_TOKEN=hf_xxx                  # opsional, hanya bila Space-mu privat
-```
+1. **Masuk ke folder `frontend`**:
+   ```bash
+   cd frontend
+   ```
+2. **Instal paket NPM**:
+   Langkah ini akan mengunduh React, Chart.js, Vite, dan semua dependensi UI.
+   ```bash
+   npm install
+   ```
+3. **Jalankan Server Development Vite**:
+   ```bash
+   npm run dev
+   ```
+   ✨ Aplikasi UI (Frontend) akan berjalan di `http://localhost:5173`. 
+   
+> **Info Penting**: Berkat konfigurasi di `vite.config.js`, setiap *request* yang mengarah ke `/api/...` akan secara otomatis di-proxy ke backend (`http://localhost:8000`). Hal ini akan membebaskan Anda dari kendala CORS selama proses development.
 
-Key Groq juga bisa diisi lewat tombol **"Groq API Key"** di UI (dikirim ke backend
-per request). Panggilan Groq selalu lewat backend (proxy), tidak pernah dari browser.
+---
 
-## 4. Ringkasan endpoint API
+### 🛠️ Troubleshooting (Masalah Umum)
 
-| Prefix | Fungsi |
-|--------|--------|
-| `/api/stocks` | Daftar saham, info harga, riwayat, indikator teknikal (dukung `?refresh=true`) |
-| `/api/prediction/{ticker}` | Prediksi harga + rekomendasi (XGBoost) |
-| `/api/news/{ticker}` | Berita terbaru hasil scraping |
-| `/api/sentiment/predict` | Analisis sentimen (IndoBERT + Groq LLM) |
-| `/api/grok/*` | Analisis teknikal, ringkasan berita, rekomendasi akhir (Groq LLM, JSON mode) |
-| `/api/macro` | Data makro: BI Rate, Inflasi, PDB, IHSG, kurs, komoditas (dukung `?refresh=true`) |
-| `/api/chat` 🆕 | Chat AI (teks + gambar), sadar konteks saham aktif |
+- **Port 8000 (Backend) atau 5173 (Frontend) sudah digunakan:**
+  Ubah port backend saat menjalankannya: `uvicorn main:app --reload --port 8080`. Namun, pastikan Anda juga memperbarui file `vite.config.js` di frontend agar `proxy` mengarah ke port yang baru.
+- **ModuleNotFoundError di Backend:**
+  Pastikan Anda telah mengaktifkan *virtual environment* (`.venv\Scripts\activate`) SEBELUM menjalankan `uvicorn main:app`.
+- **Gagal menginstal XGBoost (Python):**
+  Untuk pengguna Windows, terkadang XGBoost membutuhkan *C++ Build Tools*. Anda dapat mengunduhnya dari [Microsoft Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/).
 
-## 5. Build produksi & hosting
+---
 
-```bash
-cd frontend
-npm run build      # hasil di frontend/dist/
-```
+## 📡 Dokumentasi Endpoint API (Ringkasan)
 
-Dua pilihan hosting (detail lengkap ada di `frontend/README.md`):
+Aplikasi memiliki berbagai endpoint yang melayani kebutuhan dashboard:
 
-- **Satu host (paling murah):** backend FastAPI sekaligus menyajikan hasil build
-  React. Lihat `frontend/backend_serve_snippet.md`.
-- **Terpisah:** frontend di Vercel/Netlify/Cloudflare Pages (gratis), backend di
-  Render/Railway/Fly.io/Hugging Face Spaces. Set `VITE_API_BASE` ke URL backend.
+| Endpoint | Method | Deskripsi |
+|----------|--------|-----------|
+| `/api/stocks` | GET | Daftar saham LQ45, harga terkini, data historis, & indikator teknikal (Mendukung parameter `?refresh=true` untuk bypass cache). |
+| `/api/prediction/{ticker}` | GET | Memuat prediksi pergerakan harga saham ke depan & rekomendasi cerdas dari XGBoost. |
+| `/api/news/{ticker}` | GET | Melakukan scraping berita terbaru terkait saham yang bersangkutan. |
+| `/api/sentiment/predict` | POST | Menganalisis sentimen (Positif/Negatif/Netral) dari teks berita (IndoBERT + Groq LLM). |
+| `/api/grok/*` | POST | Meringkas berita teknikal dan menyimpulkan insight akhir berbasis JSON menggunakan Groq LLM. |
+| `/api/macro` | GET | Mengambil data makro terkini (Inflasi, BI Rate, PDB, dll). (Mendukung parameter `?refresh=true`). |
+| `/api/chat` | POST | 🆕 Endpoint Chat AI multimodal yang kontekstual dan mendukung input teks beserta gambar (vision). |
 
-## Struktur kode singkat
+---
 
-```
-backend/
-  main.py                     # registrasi router & CORS
-  routers/
-    stocks.py                 # harga, info, riwayat, indikator (cache + refresh)
-    prediction.py             # prediksi harga XGBoost
-    news.py                   # scraping berita
-    sentiment.py              # sentimen: IndoBERT (HF Space) + Groq LLM
-    grok.py                   # proxy Groq: multi-key rotate, JSON mode, prompt anti-bias
-    macro.py                  # endpoint makro
-    chat.py                   # 🆕 Chat AI (teks + gambar / vision)
-  services/
-    market_data.py            # ambil & olah data pasar (yfinance)
-    macro_data.py             # data makro nyata (BI Rate/Inflasi/PDB + yfinance)
-    news_scraper.py           # util scraping berita
-    cache.py                  # ttl_cache + bypass saat refresh
-  hf_space/                   # Dockerfile + app.py untuk HF Space (model IndoBERT)
-frontend/
-  src/
-    pages/                    # Overview, Forecasting, BeritaSentimen, IndikatorTeknikal, MakroEkonomi, ChatAI 🆕, LandingPage
-    components/               # Sidebar, Topbar, Layout, TickerSearchBar
-    context/AppContext.jsx    # state global (saham aktif, watchlist)
-    api/client.js             # client API terpusat
-    styles/                   # style.css + pages.css
-```
+## 🌐 Build Produksi & Deployment
+
+Untuk mendeploy aplikasi ke production:
+
+1. Build aplikasi Frontend:
+   ```bash
+   cd frontend
+   npm run build
+   ```
+   Hasil build statis akan berada di dalam direktori `frontend/dist/`.
+
+2. **Opsi Deployment:**
+   - **Single Server (Murah/Praktis):** Gunakan backend FastAPI untuk sekaligus melayani file statis hasil build dari React (referensi kode ada di `frontend/backend_serve_snippet.md`).
+   - **Split Hosting (Direkomendasikan):** 
+     - **Frontend:** Deploy folder `frontend/` ke layanan gratis seperti Vercel, Netlify, atau Cloudflare Pages.
+     - **Backend:** Deploy folder `backend/` ke Render, Railway, Fly.io, atau DigitalOcean. Pastikan mengatur *Environment Variable* `VITE_API_BASE` di frontend agar mengarah ke URL backend live Anda.
+
+---
+
+<div align="center">
+  <b>StockSense LQ45</b> didesain untuk menyatukan kekuatan data pasar, analisis kuantitatif (Machine Learning), dan kecerdasan generatif buatan (LLM) dalam satu genggaman investor. 🚀
+</div>
