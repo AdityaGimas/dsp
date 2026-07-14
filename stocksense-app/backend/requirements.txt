@@ -1,21 +1,14 @@
-# ── Web framework ──
 fastapi
 uvicorn[standard]
 httpx
 python-dotenv
-
-# ── Data pasar & analisis ──
 yfinance
 pandas
 numpy
 ta
-
-# ── Machine learning (forecasting / prediksi harga) ──
-# XGBRegressor adalah wrapper scikit-learn dari xgboost, jadi keduanya wajib.
 xgboost
 scikit-learn
-
-# ── Berita & scraping ──
+requests
 feedparser
 beautifulsoup4
 lxml
@@ -24,6 +17,4 @@ trafilatura
 newspaper3k
 selenium
 webdriver-manager
-
-# ── Integrasi Hugging Face ──
 huggingface_hub
