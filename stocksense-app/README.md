@@ -15,7 +15,7 @@ Proyek ini dibangun menggunakan arsitektur monorepo yang memisahkan antara front
 ## ✨ Fitur Utama
 
 - 📊 **Overview Saham Real-Time:** Menampilkan data harga saham secara live menggunakan `yfinance`, lengkap dengan metrik kunci, ringkasan teknikal, dan kesimpulan cerdas dari **Groq LLM**.
-- 🤖 **Forecasting Harga (Machine Learning):** Memprediksi pergerakan harga saham ke depan menggunakan model **XGBoost**. Memberikan sinyal rekomendasi cerdas (BUY/SELL/HOLD) yang didasarkan pada perpaduan expected return dan indikator RSI.
+- 🤖 **Forecasting Harga (Dual-Model):** Memprediksi pergerakan harga saham 3 hari ke depan menggunakan dua pendekatan paralel: model Machine Learning **XGBoost** dan penalaran teknikal **Groq LLM**. Keduanya memberikan prediksi harga (dengan rentang *high/low*) serta sinyal rekomendasi (BUY/SELL/HOLD) untuk komparasi yang lebih mantap.
 - 📉 **Indikator Teknikal Lengkap:** Kalkulasi otomatis untuk berbagai indikator teknikal seperti RSI (Relative Strength Index), MACD, Moving Average (untuk deteksi *golden/death cross*), dan indikator lainnya menggunakan pustaka `ta`.
 - 📰 **Analisis Berita & Sentimen:** Secara otomatis melakukan scraping berita terbaru terkait saham yang dipilih dan menganalisis sentimen pasar menggunakan arsitektur **Tri-Model** (3 Pendekatan): Model **IndoBERT** yang di-finetune (di-hosting via Hugging Face Space) digabungkan dengan dua model berbeda dari **Groq LLM** secara paralel untuk memberikan komparasi sentimen yang lebih komprehensif.
 - 🌍 **Data Makro Ekonomi Nyata:** Menyajikan gambaran ekonomi makro yang mempengaruhi pasar seperti BI Rate, tingkat Inflasi, PDB Indonesia, serta data IHSG, nilai tukar USD-IDR, dan harga komoditas utama dunia.
