@@ -158,8 +158,6 @@ export default function LandingPage() {
       <header className="lp-header">
         <div className="lp-logo"><span className="lp-logo-dot" />StockSense</div>
         <div className="lp-header-center">
-          <span className="lp-nav-pill">IDX · LQ45</span>
-          <span className="lp-nav-pill">DSP Project 2025</span>
         </div>
         <div className="lp-live-badge"><span className="lp-live-dot" />IDX Live Market</div>
       </header>
@@ -168,11 +166,6 @@ export default function LandingPage() {
       <section className="lp-hero">
         <div className="lp-eyebrow"><span className="lp-eyebrow-dot" />Platform Analisis Saham Indonesia</div>
         <h1 className="lp-title">Analisis Saham<br /><span className="lp-title-grad">Lebih Cerdas</span></h1>
-        <p className="lp-subtitle">
-          Forecasting harga berbasis AI, sentimen berita real-time, dan<br />
-          indikator teknikal lengkap untuk 45 saham unggulan IDX.
-        </p>
-
         {/* Search */}
         <div className="lp-search-wrap">
           <div className={`lp-search-box ${focused ? "lp-search-focused" : ""}`}>
@@ -221,18 +214,6 @@ export default function LandingPage() {
         </div>
         <p className="lp-search-hint">Pilih saham untuk mulai analisis · atau scroll ke bawah untuk browse semua saham</p>
       </section>
-
-      {/* ── STATS BAR ──────────────────────────── */}
-      <div className="lp-stats-wrap">
-        <div className="lp-stats">
-          {STATS.map((s) => (
-            <div key={s.label} className="lp-stat">
-              <span className="lp-stat-val">{s.value}<span className="lp-stat-suffix">{s.suffix}</span></span>
-              <span className="lp-stat-lbl">{s.label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
 
       {/* ── POPULAR STOCKS ─────────────────────── */}
       <section className="lp-section">
